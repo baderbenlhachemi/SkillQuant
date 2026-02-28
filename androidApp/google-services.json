@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "547895354199",
+    "project_id": "skillquant-v1",
+    "storage_bucket": "skillquant-v1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:547895354199:android:7e6cdf2ea8f0311b5f5412",
+        "android_client_info": {
+          "package_name": "com.badereddine.skillquant"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAmui-04XDeZlO7xGozZsxFozLknoNLVAo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Skills, metrics, opportunities, trending — read-only for authenticated users
+    match /skills/{skillId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only Cloud Functions write
+    }
+
+    match /skillMetrics/{skillId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+
+      match /history/{dateId} {
+        allow read: if request.auth != null;
+        allow write: if false;
+      }
+    }
+
+    match /arbitrageOpportunities/{oppId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /trendingSkills/{trendId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Alerts — users can read/update their own alerts
+    match /alerts/{alertId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.userId == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow create, delete: if false; // Only Cloud Functions create
+    }
+
+    // User profiles — users can read/write their own profile
+    match /userProfiles/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['watchlist', 'notificationsEnabled', 'fcmToken']);
+      allow delete: if false;
+    }
+
+    // App config — read-only
+    match /appConfig/{configId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Raw data collections — no client access
+    match /rawJobPostings/{docId} {
+      allow read, write: if false;
+    }
+    match /rawFreelanceGigs/{docId} {
+      allow read, write: if false;
+    }
+    match /scrapeLogs/{docId} {
+      allow read, write: if false;
+    }
+  }
+}
+

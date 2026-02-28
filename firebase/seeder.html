@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkillQuant - Firestore Seeder</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #0d1117;
+            color: #f0f6fc;
+        }
+        .container {
+            background: #161b22;
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid #30363d;
+        }
+        h1 { color: #2dd4bf; margin-top: 0; }
+        button {
+            background: #2dd4bf;
+            color: #0d1117;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover { background: #14b8a6; }
+        button:disabled {
+            background: #30363d;
+            color: #8b949e;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 15px;
+            background: #21262d;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { color: #3fb950; }
+        .error { color: #f85149; }
+        .warning { color: #ffb020; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌱 SkillQuant Data Seeder</h1>
+        <p>This will populate your Firestore with sample data for the SkillQuant app.</p>
+
+        <button id="seedBtn" onclick="seedAll()">🚀 Seed All Collections</button>
+        <button id="clearBtn" onclick="clearAndReseed()" style="background:#f85149;color:#fff;">🗑️ Clear & Reseed</button>
+        <button onclick="clearLogs()">📋 Clear Logs</button>
+
+        <div id="status"></div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+        import { getFirestore, collection, doc, setDoc, writeBatch, getDocs, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+        import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+
+        // Firebase configuration (from your google-services.json)
+        const firebaseConfig = {
+            apiKey: "AIzaSyAmui-04XDeZlO7xGozZsxFozLknoNLVAo",
+            authDomain: "skillquant-v1.firebaseapp.com",
+            projectId: "skillquant-v1",
+            storageBucket: "skillquant-v1.firebasestorage.app",
+            messagingSenderId: "547895354199",
+            appId: "1:547895354199:android:7e6cdf2ea8f0311b5f5412"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        window.db = db;
+        window.auth = auth;
+
+        function log(message, type = 'info') {
+            const status = document.getElementById('status');
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : '';
+            status.innerHTML += `<span class="${className}">${message}</span>\n`;
+            status.scrollTop = status.scrollHeight;
+        }
+
+        window.log = log;
+
+        // ===== CONFIGURATION =====
+        const COUNTRIES = ["Morocco", "France", "USA"];
+        const SKILLS = [
+            // === Frontend ===
+            { id: "react",       name: "React",             category: "Frontend",  remotiveTag: "react",        searchTerms: ["react", "react.js", "reactjs"] },
+            { id: "typescript",  name: "TypeScript",        category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["typescript", "ts"] },
+            { id: "angular",     name: "Angular",           category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["angular", "angular.js"] },
+            { id: "vuejs",       name: "Vue.js",            category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["vue.js", "vuejs", "vue"] },
+            { id: "nextjs",      name: "Next.js",           category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["next.js", "nextjs"] },
+            { id: "svelte",      name: "Svelte",            category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["svelte", "sveltekit"] },
+            { id: "remix",       name: "Remix",             category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["remix"] },
+            { id: "html_css",    name: "HTML/CSS",          category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["html", "css", "html5", "css3"] },
+            { id: "tailwindcss", name: "Tailwind CSS",      category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["tailwind", "tailwindcss"] },
+            { id: "sass",        name: "Sass/SCSS",         category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["sass", "scss"] },
+            { id: "webgl",       name: "WebGL/Three.js",    category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["webgl", "three.js", "threejs"] },
+            { id: "htmx",        name: "HTMX",             category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["htmx"] },
+            { id: "astro",       name: "Astro",            category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["astro"] },
+            // === Backend ===
+            { id: "nodejs",      name: "Node.js",           category: "Backend",   remotiveTag: "node",         searchTerms: ["node.js", "nodejs", "node"] },
+            { id: "python",      name: "Python",            category: "Backend",   remotiveTag: "python",       searchTerms: ["python"] },
+            { id: "java",        name: "Java",              category: "Backend",   remotiveTag: "java",         searchTerms: ["java", "jvm"] },
+            { id: "springboot",  name: "Spring Boot",       category: "Backend",   remotiveTag: "java",         searchTerms: ["spring boot", "spring", "springboot"] },
+            { id: "go",          name: "Go",                category: "Backend",   remotiveTag: "golang",       searchTerms: ["golang", "go developer"] },
+            { id: "rust",        name: "Rust",              category: "Backend",   remotiveTag: "rust",         searchTerms: ["rust", "rustlang"] },
+            { id: "csharp",      name: "C#",                category: "Backend",   remotiveTag: "c#",           searchTerms: ["c#", "csharp", ".net"] },
+            { id: "dotnet",      name: ".NET",              category: "Backend",   remotiveTag: "c#",           searchTerms: [".net", "dotnet", "asp.net"] },
+            { id: "php",         name: "PHP",               category: "Backend",   remotiveTag: "php",          searchTerms: ["php", "laravel"] },
+            { id: "laravel",     name: "Laravel",           category: "Backend",   remotiveTag: "php",          searchTerms: ["laravel"] },
+            { id: "ruby",        name: "Ruby",              category: "Backend",   remotiveTag: "ruby",         searchTerms: ["ruby", "rails"] },
+            { id: "rails",       name: "Ruby on Rails",     category: "Backend",   remotiveTag: "ruby",         searchTerms: ["ruby on rails", "rails", "ror"] },
+            { id: "django",      name: "Django",            category: "Backend",   remotiveTag: "python",       searchTerms: ["django"] },
+            { id: "fastapi",     name: "FastAPI",           category: "Backend",   remotiveTag: "python",       searchTerms: ["fastapi", "fast api"] },
+            { id: "flask",       name: "Flask",             category: "Backend",   remotiveTag: "python",       searchTerms: ["flask"] },
+            { id: "graphql",     name: "GraphQL",           category: "Backend",   remotiveTag: "node",         searchTerms: ["graphql", "graph ql"] },
+            { id: "grpc",        name: "gRPC",              category: "Backend",   remotiveTag: "golang",       searchTerms: ["grpc"] },
+            { id: "elixir",      name: "Elixir",            category: "Backend",   remotiveTag: "elixir",       searchTerms: ["elixir", "phoenix"] },
+            { id: "scala",       name: "Scala",             category: "Backend",   remotiveTag: "java",         searchTerms: ["scala"] },
+            { id: "cpp",         name: "C++",               category: "Backend",   remotiveTag: "c++",          searchTerms: ["c++", "cpp"] },
+            { id: "c",           name: "C",                 category: "Backend",   remotiveTag: "c",            searchTerms: ["c programming", "c language"] },
+            // === Mobile ===
+            { id: "kotlin",      name: "Kotlin",            category: "Mobile",    remotiveTag: "android",      searchTerms: ["kotlin", "android"] },
+            { id: "swift",       name: "Swift",             category: "Mobile",    remotiveTag: "ios",          searchTerms: ["swift", "ios", "swiftui"] },
+            { id: "flutter",     name: "Flutter",           category: "Mobile",    remotiveTag: "flutter",      searchTerms: ["flutter", "dart"] },
+            { id: "reactnative", name: "React Native",      category: "Mobile",    remotiveTag: "react",        searchTerms: ["react native", "react-native"] },
+            { id: "swiftui",     name: "SwiftUI",           category: "Mobile",    remotiveTag: "ios",          searchTerms: ["swiftui"] },
+            { id: "jetpack",     name: "Jetpack Compose",   category: "Mobile",    remotiveTag: "android",      searchTerms: ["jetpack compose", "compose"] },
+            { id: "kmp",         name: "Kotlin Multiplatform", category: "Mobile", remotiveTag: "android",      searchTerms: ["kotlin multiplatform", "kmp", "kmm"] },
+            // === DevOps & Cloud ===
+            { id: "kubernetes",  name: "Kubernetes",        category: "DevOps",    remotiveTag: "devops",       searchTerms: ["kubernetes", "k8s"] },
+            { id: "docker",      name: "Docker",            category: "DevOps",    remotiveTag: "devops",       searchTerms: ["docker", "containers"] },
+            { id: "terraform",   name: "Terraform",         category: "DevOps",    remotiveTag: "devops",       searchTerms: ["terraform", "iac"] },
+            { id: "aws",         name: "AWS",               category: "Cloud",     remotiveTag: "aws",          searchTerms: ["aws", "amazon web services", "ec2", "s3"] },
+            { id: "azure",       name: "Azure",             category: "Cloud",     remotiveTag: "azure",        searchTerms: ["azure", "microsoft azure"] },
+            { id: "gcp",         name: "Google Cloud",      category: "Cloud",     remotiveTag: "gcp",          searchTerms: ["gcp", "google cloud", "google cloud platform"] },
+            { id: "ansible",     name: "Ansible",           category: "DevOps",    remotiveTag: "devops",       searchTerms: ["ansible"] },
+            { id: "jenkins",     name: "Jenkins",           category: "DevOps",    remotiveTag: "devops",       searchTerms: ["jenkins", "ci/cd"] },
+            { id: "githubactions", name: "GitHub Actions",  category: "DevOps",    remotiveTag: "devops",       searchTerms: ["github actions", "github ci"] },
+            { id: "gitlab",      name: "GitLab CI/CD",      category: "DevOps",    remotiveTag: "devops",       searchTerms: ["gitlab", "gitlab ci"] },
+            { id: "helm",        name: "Helm",              category: "DevOps",    remotiveTag: "devops",       searchTerms: ["helm", "helm charts"] },
+            { id: "prometheus",  name: "Prometheus",        category: "DevOps",    remotiveTag: "devops",       searchTerms: ["prometheus", "grafana"] },
+            { id: "linux",       name: "Linux",             category: "DevOps",    remotiveTag: "devops",       searchTerms: ["linux", "ubuntu", "centos"] },
+            { id: "nginx",       name: "Nginx",             category: "DevOps",    remotiveTag: "devops",       searchTerms: ["nginx"] },
+            { id: "pulumi",      name: "Pulumi",            category: "DevOps",    remotiveTag: "devops",       searchTerms: ["pulumi"] },
+            // === Data & Databases ===
+            { id: "postgresql",  name: "PostgreSQL",        category: "Data",      remotiveTag: "data",         searchTerms: ["postgresql", "postgres"] },
+            { id: "mongodb",     name: "MongoDB",           category: "Data",      remotiveTag: "data",         searchTerms: ["mongodb", "mongo"] },
+            { id: "mysql",       name: "MySQL",             category: "Data",      remotiveTag: "data",         searchTerms: ["mysql"] },
+            { id: "redis",       name: "Redis",             category: "Data",      remotiveTag: "data",         searchTerms: ["redis"] },
+            { id: "elasticsearch", name: "Elasticsearch",   category: "Data",      remotiveTag: "data",         searchTerms: ["elasticsearch", "elastic", "elk"] },
+            { id: "kafka",       name: "Apache Kafka",      category: "Data",      remotiveTag: "data",         searchTerms: ["kafka", "apache kafka"] },
+            { id: "spark",       name: "Apache Spark",      category: "Data",      remotiveTag: "data",         searchTerms: ["spark", "apache spark", "pyspark"] },
+            { id: "hadoop",      name: "Hadoop",            category: "Data",      remotiveTag: "data",         searchTerms: ["hadoop", "hdfs", "mapreduce"] },
+            { id: "snowflake",   name: "Snowflake",         category: "Data",      remotiveTag: "data",         searchTerms: ["snowflake"] },
+            { id: "databricks",  name: "Databricks",        category: "Data",      remotiveTag: "data",         searchTerms: ["databricks"] },
+            { id: "dbt",         name: "dbt",               category: "Data",      remotiveTag: "data",         searchTerms: ["dbt", "data build tool"] },
+            { id: "airflow",     name: "Apache Airflow",    category: "Data",      remotiveTag: "data",         searchTerms: ["airflow", "apache airflow"] },
+            { id: "cassandra",   name: "Cassandra",         category: "Data",      remotiveTag: "data",         searchTerms: ["cassandra", "apache cassandra"] },
+            { id: "dynamodb",    name: "DynamoDB",          category: "Data",      remotiveTag: "aws",          searchTerms: ["dynamodb"] },
+            { id: "neo4j",       name: "Neo4j",             category: "Data",      remotiveTag: "data",         searchTerms: ["neo4j", "graph database"] },
+            { id: "sqlite",      name: "SQLite",            category: "Data",      remotiveTag: "data",         searchTerms: ["sqlite"] },
+            // === AI/ML ===
+            { id: "ml",          name: "Machine Learning",  category: "AI/ML",     remotiveTag: "data",         searchTerms: ["machine learning", "ml", "deep learning", "ai"] },
+            { id: "tensorflow",  name: "TensorFlow",        category: "AI/ML",     remotiveTag: "data",         searchTerms: ["tensorflow", "tf"] },
+            { id: "pytorch",     name: "PyTorch",           category: "AI/ML",     remotiveTag: "data",         searchTerms: ["pytorch"] },
+            { id: "llm",         name: "LLMs/GPT",          category: "AI/ML",     remotiveTag: "data",         searchTerms: ["llm", "gpt", "large language model", "chatgpt", "openai"] },
+            { id: "langchain",   name: "LangChain",         category: "AI/ML",     remotiveTag: "data",         searchTerms: ["langchain"] },
+            { id: "nlp",         name: "NLP",               category: "AI/ML",     remotiveTag: "data",         searchTerms: ["nlp", "natural language processing"] },
+            { id: "cv",          name: "Computer Vision",   category: "AI/ML",     remotiveTag: "data",         searchTerms: ["computer vision", "opencv", "image recognition"] },
+            { id: "mlops",       name: "MLOps",             category: "AI/ML",     remotiveTag: "data",         searchTerms: ["mlops", "ml ops"] },
+            { id: "huggingface", name: "Hugging Face",      category: "AI/ML",     remotiveTag: "data",         searchTerms: ["hugging face", "huggingface", "transformers"] },
+            { id: "datascience", name: "Data Science",      category: "AI/ML",     remotiveTag: "data",         searchTerms: ["data science", "data scientist"] },
+            { id: "rag",         name: "RAG",               category: "AI/ML",     remotiveTag: "data",         searchTerms: ["rag", "retrieval augmented generation"] },
+            // === Data Analytics & BI ===
+            { id: "dataanalyst", name: "Data Analytics",    category: "Data",      remotiveTag: "data",         searchTerms: ["data analyst", "data analytics", "analytics"] },
+            { id: "powerbi",     name: "Power BI",          category: "Data",      remotiveTag: "data",         searchTerms: ["power bi", "powerbi"] },
+            { id: "tableau",     name: "Tableau",           category: "Data",      remotiveTag: "data",         searchTerms: ["tableau"] },
+            { id: "looker",      name: "Looker",            category: "Data",      remotiveTag: "data",         searchTerms: ["looker"] },
+            { id: "excel",       name: "Excel/VBA",         category: "Data",      remotiveTag: "data",         searchTerms: ["excel", "vba", "spreadsheet"] },
+            { id: "sql",         name: "SQL",               category: "Data",      remotiveTag: "data",         searchTerms: ["sql", "structured query"] },
+            { id: "r",           name: "R",                 category: "Data",      remotiveTag: "data",         searchTerms: ["r programming", "r language", "rstudio"] },
+            { id: "pandas",      name: "Pandas",            category: "Data",      remotiveTag: "python",       searchTerms: ["pandas"] },
+            { id: "jupyter",     name: "Jupyter",           category: "Data",      remotiveTag: "python",       searchTerms: ["jupyter", "jupyter notebook"] },
+            // === Security ===
+            { id: "cybersecurity", name: "Cybersecurity",   category: "Security",  remotiveTag: "security",     searchTerms: ["cybersecurity", "cyber security", "infosec"] },
+            { id: "pentesting",  name: "Penetration Testing", category: "Security", remotiveTag: "security",    searchTerms: ["penetration testing", "pentest", "ethical hacking"] },
+            { id: "soc",         name: "SOC Analyst",       category: "Security",  remotiveTag: "security",     searchTerms: ["soc", "security operations", "siem"] },
+            { id: "cloudsec",    name: "Cloud Security",    category: "Security",  remotiveTag: "security",     searchTerms: ["cloud security", "aws security", "azure security"] },
+            { id: "devsecops",   name: "DevSecOps",         category: "Security",  remotiveTag: "devops",       searchTerms: ["devsecops"] },
+            { id: "zeroknowledge", name: "Zero Trust",      category: "Security",  remotiveTag: "security",     searchTerms: ["zero trust", "zero knowledge"] },
+            // === Blockchain / Web3 ===
+            { id: "blockchain",  name: "Blockchain",        category: "Web3",      remotiveTag: "blockchain",   searchTerms: ["blockchain"] },
+            { id: "solidity",    name: "Solidity",          category: "Web3",      remotiveTag: "blockchain",   searchTerms: ["solidity", "smart contract"] },
+            { id: "web3",        name: "Web3",              category: "Web3",      remotiveTag: "blockchain",   searchTerms: ["web3", "dapp", "decentralized"] },
+            { id: "ethereum",    name: "Ethereum",          category: "Web3",      remotiveTag: "blockchain",   searchTerms: ["ethereum", "eth"] },
+            { id: "defi",        name: "DeFi",              category: "Web3",      remotiveTag: "blockchain",   searchTerms: ["defi", "decentralized finance"] },
+            // === Design ===
+            { id: "figma",       name: "Figma",             category: "Design",    remotiveTag: "design",       searchTerms: ["figma"] },
+            { id: "uxdesign",    name: "UX Design",         category: "Design",    remotiveTag: "design",       searchTerms: ["ux design", "ux", "user experience"] },
+            { id: "uidesign",    name: "UI Design",         category: "Design",    remotiveTag: "design",       searchTerms: ["ui design", "ui", "user interface"] },
+            { id: "sketch",      name: "Sketch",            category: "Design",    remotiveTag: "design",       searchTerms: ["sketch"] },
+            { id: "adobexd",     name: "Adobe XD",          category: "Design",    remotiveTag: "design",       searchTerms: ["adobe xd", "xd"] },
+            // === Project/Product ===
+            { id: "agile",       name: "Agile/Scrum",       category: "Management", remotiveTag: "product",     searchTerms: ["agile", "scrum", "scrum master"] },
+            { id: "productmgmt", name: "Product Management", category: "Management", remotiveTag: "product",   searchTerms: ["product manager", "product management", "pm"] },
+            { id: "jira",        name: "Jira",              category: "Management", remotiveTag: "product",     searchTerms: ["jira", "atlassian"] },
+            // === Testing & QA ===
+            { id: "selenium",    name: "Selenium",          category: "Testing",   remotiveTag: "qa",           searchTerms: ["selenium", "webdriver"] },
+            { id: "cypress",     name: "Cypress",           category: "Testing",   remotiveTag: "qa",           searchTerms: ["cypress"] },
+            { id: "playwright",  name: "Playwright",        category: "Testing",   remotiveTag: "qa",           searchTerms: ["playwright"] },
+            { id: "jest",        name: "Jest",              category: "Testing",   remotiveTag: "javascript",   searchTerms: ["jest"] },
+            { id: "qa",          name: "QA Engineering",    category: "Testing",   remotiveTag: "qa",           searchTerms: ["qa", "quality assurance", "test automation"] },
+            // === IoT & Embedded ===
+            { id: "iot",         name: "IoT",               category: "IoT",       remotiveTag: "embedded",     searchTerms: ["iot", "internet of things"] },
+            { id: "embedded",    name: "Embedded Systems",  category: "IoT",       remotiveTag: "embedded",     searchTerms: ["embedded", "firmware", "microcontroller"] },
+            { id: "arduino",     name: "Arduino",           category: "IoT",       remotiveTag: "embedded",     searchTerms: ["arduino"] },
+            { id: "raspberrypi", name: "Raspberry Pi",      category: "IoT",       remotiveTag: "embedded",     searchTerms: ["raspberry pi"] },
+            // === Game Dev ===
+            { id: "unity",       name: "Unity",             category: "GameDev",   remotiveTag: "gamedev",      searchTerms: ["unity", "unity3d"] },
+            { id: "unreal",      name: "Unreal Engine",     category: "GameDev",   remotiveTag: "gamedev",      searchTerms: ["unreal", "unreal engine", "ue5"] },
+            { id: "godot",       name: "Godot",             category: "GameDev",   remotiveTag: "gamedev",      searchTerms: ["godot"] },
+            // === Low Code / No Code ===
+            { id: "salesforce",  name: "Salesforce",        category: "LowCode",   remotiveTag: "salesforce",   searchTerms: ["salesforce", "apex", "soql"] },
+            { id: "sap",         name: "SAP",               category: "LowCode",   remotiveTag: "sap",          searchTerms: ["sap", "abap"] },
+            { id: "servicenow",  name: "ServiceNow",        category: "LowCode",   remotiveTag: "servicenow",   searchTerms: ["servicenow"] },
+            { id: "wordpress",   name: "WordPress",         category: "LowCode",   remotiveTag: "wordpress",    searchTerms: ["wordpress", "wp"] },
+            { id: "shopify",     name: "Shopify Dev",       category: "LowCode",   remotiveTag: "shopify",      searchTerms: ["shopify", "liquid"] },
+            // === Networking ===
+            { id: "networking",  name: "Networking",        category: "Networking", remotiveTag: "networking",   searchTerms: ["networking", "cisco", "ccna"] },
+            { id: "dns",         name: "DNS/CDN",           category: "Networking", remotiveTag: "networking",   searchTerms: ["dns", "cdn", "cloudflare"] },
+            // === Data Engineering ===
+            { id: "dataeng",     name: "Data Engineering",  category: "Data",      remotiveTag: "data",         searchTerms: ["data engineer", "data engineering", "etl"] },
+            { id: "etl",         name: "ETL Pipelines",     category: "Data",      remotiveTag: "data",         searchTerms: ["etl", "data pipeline"] },
+            { id: "fivetran",    name: "Fivetran",          category: "Data",      remotiveTag: "data",         searchTerms: ["fivetran"] },
+            // === Others ===
+            { id: "git",         name: "Git",               category: "DevOps",    remotiveTag: "devops",       searchTerms: ["git", "github", "version control"] },
+            { id: "restapi",     name: "REST APIs",         category: "Backend",   remotiveTag: "backend",      searchTerms: ["rest", "rest api", "restful"] },
+            { id: "microservices", name: "Microservices",   category: "Backend",   remotiveTag: "backend",      searchTerms: ["microservices", "microservice"] },
+            { id: "rabbitmq",    name: "RabbitMQ",          category: "Backend",   remotiveTag: "backend",      searchTerms: ["rabbitmq"] },
+            { id: "oauth",       name: "OAuth/OIDC",        category: "Security",  remotiveTag: "security",     searchTerms: ["oauth", "oidc", "openid"] },
+            { id: "wasm",        name: "WebAssembly",       category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["webassembly", "wasm"] },
+            { id: "pwa",         name: "PWA",               category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["pwa", "progressive web app"] },
+            { id: "serverless",  name: "Serverless",        category: "Cloud",     remotiveTag: "aws",          searchTerms: ["serverless", "lambda", "cloud functions"] },
+            { id: "firebase",    name: "Firebase",          category: "Cloud",     remotiveTag: "firebase",     searchTerms: ["firebase"] },
+            { id: "supabase",    name: "Supabase",          category: "Cloud",     remotiveTag: "backend",      searchTerms: ["supabase"] },
+            { id: "vercel",      name: "Vercel",            category: "Cloud",     remotiveTag: "javascript",   searchTerms: ["vercel"] },
+            { id: "cloudflare",  name: "Cloudflare Workers", category: "Cloud",    remotiveTag: "javascript",   searchTerms: ["cloudflare workers", "cloudflare"] },
+            { id: "redis_streams", name: "Redis Streams",   category: "Data",      remotiveTag: "data",         searchTerms: ["redis streams"] },
+            { id: "istio",       name: "Istio",             category: "DevOps",    remotiveTag: "devops",       searchTerms: ["istio", "service mesh"] },
+            { id: "argo",        name: "ArgoCD",            category: "DevOps",    remotiveTag: "devops",       searchTerms: ["argocd", "argo"] },
+            { id: "nats",        name: "NATS",              category: "Backend",   remotiveTag: "golang",       searchTerms: ["nats"] },
+            { id: "deno",        name: "Deno",              category: "Backend",   remotiveTag: "javascript",   searchTerms: ["deno"] },
+            { id: "bun",         name: "Bun",               category: "Backend",   remotiveTag: "javascript",   searchTerms: ["bun"] },
+            { id: "haskell",     name: "Haskell",           category: "Backend",   remotiveTag: "haskell",      searchTerms: ["haskell"] },
+            { id: "clojure",     name: "Clojure",           category: "Backend",   remotiveTag: "clojure",      searchTerms: ["clojure"] },
+            { id: "erlang",      name: "Erlang",            category: "Backend",   remotiveTag: "elixir",       searchTerms: ["erlang"] },
+            { id: "lua",         name: "Lua",               category: "Backend",   remotiveTag: "lua",          searchTerms: ["lua"] },
+            { id: "perl",        name: "Perl",              category: "Backend",   remotiveTag: "perl",         searchTerms: ["perl"] },
+            { id: "cobol",       name: "COBOL",             category: "Backend",   remotiveTag: "mainframe",    searchTerms: ["cobol"] },
+            { id: "julia",       name: "Julia",             category: "Data",      remotiveTag: "data",         searchTerms: ["julia"] },
+            { id: "matlab",      name: "MATLAB",            category: "Data",      remotiveTag: "data",         searchTerms: ["matlab"] },
+            { id: "verilog",     name: "Verilog/VHDL",      category: "IoT",       remotiveTag: "embedded",     searchTerms: ["verilog", "vhdl"] },
+            { id: "threejs",     name: "Three.js",          category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["three.js", "threejs"] },
+            { id: "d3js",        name: "D3.js",             category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["d3.js", "d3"] },
+            { id: "electron",    name: "Electron",          category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["electron"] },
+            { id: "tauri",       name: "Tauri",             category: "Frontend",  remotiveTag: "rust",         searchTerms: ["tauri"] },
+            { id: "nuxtjs",      name: "Nuxt.js",           category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["nuxt", "nuxtjs"] },
+            { id: "gatsby",      name: "Gatsby",            category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["gatsby"] },
+            { id: "storybook",   name: "Storybook",         category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["storybook"] },
+            { id: "rxjs",        name: "RxJS",              category: "Frontend",  remotiveTag: "javascript",   searchTerms: ["rxjs", "reactive"] },
+            { id: "redux",       name: "Redux",             category: "Frontend",  remotiveTag: "react",        searchTerms: ["redux"] },
+            { id: "zustand",     name: "Zustand",           category: "Frontend",  remotiveTag: "react",        searchTerms: ["zustand"] },
+            { id: "prisma",      name: "Prisma",            category: "Backend",   remotiveTag: "node",         searchTerms: ["prisma"] },
+            { id: "drizzle",     name: "Drizzle ORM",       category: "Backend",   remotiveTag: "node",         searchTerms: ["drizzle"] },
+            { id: "nestjs",      name: "NestJS",            category: "Backend",   remotiveTag: "node",         searchTerms: ["nestjs", "nest.js"] },
+            { id: "expressjs",   name: "Express.js",        category: "Backend",   remotiveTag: "node",         searchTerms: ["express", "express.js", "expressjs"] },
+            { id: "trpc",        name: "tRPC",              category: "Backend",   remotiveTag: "node",         searchTerms: ["trpc"] },
+            { id: "celery",      name: "Celery",            category: "Backend",   remotiveTag: "python",       searchTerms: ["celery"] },
+            { id: "rabbitmq2",   name: "AMQP/RabbitMQ",    category: "Backend",   remotiveTag: "backend",      searchTerms: ["amqp", "rabbitmq"] },
+            { id: "opensearch",  name: "OpenSearch",        category: "Data",      remotiveTag: "data",         searchTerms: ["opensearch"] },
+            { id: "clickhouse",  name: "ClickHouse",        category: "Data",      remotiveTag: "data",         searchTerms: ["clickhouse"] },
+            { id: "timescaledb", name: "TimescaleDB",       category: "Data",      remotiveTag: "data",         searchTerms: ["timescaledb"] },
+            { id: "grafana",     name: "Grafana",           category: "DevOps",    remotiveTag: "devops",       searchTerms: ["grafana"] },
+            { id: "datadog",     name: "Datadog",           category: "DevOps",    remotiveTag: "devops",       searchTerms: ["datadog"] },
+            { id: "newrelic",    name: "New Relic",          category: "DevOps",    remotiveTag: "devops",       searchTerms: ["new relic"] },
+            { id: "vault",       name: "HashiCorp Vault",   category: "Security",  remotiveTag: "devops",       searchTerms: ["vault", "hashicorp vault"] },
+            { id: "consul",      name: "Consul",            category: "DevOps",    remotiveTag: "devops",       searchTerms: ["consul"] },
+            { id: "nomad",       name: "Nomad",             category: "DevOps",    remotiveTag: "devops",       searchTerms: ["nomad", "hashicorp nomad"] },
+            { id: "cloudformation", name: "CloudFormation", category: "Cloud",     remotiveTag: "aws",          searchTerms: ["cloudformation"] },
+            { id: "cdk",         name: "AWS CDK",           category: "Cloud",     remotiveTag: "aws",          searchTerms: ["aws cdk", "cdk"] },
+            { id: "bicep",       name: "Azure Bicep",       category: "Cloud",     remotiveTag: "azure",        searchTerms: ["bicep", "azure bicep"] },
+            { id: "gke",         name: "GKE",               category: "Cloud",     remotiveTag: "gcp",          searchTerms: ["gke", "google kubernetes engine"] },
+            { id: "lambda",      name: "AWS Lambda",        category: "Cloud",     remotiveTag: "aws",          searchTerms: ["lambda", "aws lambda"] },
+            { id: "bigquery",    name: "BigQuery",          category: "Data",      remotiveTag: "gcp",          searchTerms: ["bigquery", "big query"] },
+            { id: "redshift",    name: "Redshift",          category: "Data",      remotiveTag: "aws",          searchTerms: ["redshift", "aws redshift"] },
+        ];
+
+        // ===== REAL LEARNING RESOURCES =====
+        const LEARNING_RESOURCES = {
+            react: [
+                { title: "React - The Complete Guide 2025", url: "https://www.udemy.com/course/react-the-complete-guide-incl-redux/", type: "course", platform: "Udemy" },
+                { title: "Full-Stack Web Development with React", url: "https://www.coursera.org/specializations/full-stack-react", type: "course", platform: "Coursera" },
+                { title: "React Tutorial for Beginners", url: "https://www.youtube.com/watch?v=SqcY0GlETPk", type: "tutorial", platform: "YouTube" },
+                { title: "React Official Documentation", url: "https://react.dev/learn", type: "docs", platform: "React.dev" },
+                { title: "freeCodeCamp React Course", url: "https://www.freecodecamp.org/learn/front-end-development-libraries/#react", type: "course", platform: "freeCodeCamp" },
+            ],
+            nodejs: [
+                { title: "The Complete Node.js Developer Course", url: "https://www.udemy.com/course/the-complete-nodejs-developer-course-2/", type: "course", platform: "Udemy" },
+                { title: "Server-side Development with NodeJS, Express", url: "https://www.coursera.org/learn/server-side-nodejs", type: "course", platform: "Coursera" },
+                { title: "Node.js Full Course for Beginners", url: "https://www.youtube.com/watch?v=f2EqECiTBL8", type: "tutorial", platform: "YouTube" },
+                { title: "Node.js Official Docs", url: "https://nodejs.org/en/learn/getting-started/introduction-to-nodejs", type: "docs", platform: "Node.js" },
+                { title: "The Odin Project - NodeJS", url: "https://www.theodinproject.com/paths/full-stack-javascript/courses/nodejs", type: "course", platform: "The Odin Project" },
+            ],
+            python: [
+                { title: "100 Days of Code - Python Pro Bootcamp", url: "https://www.udemy.com/course/100-days-of-code/", type: "course", platform: "Udemy" },
+                { title: "Python for Everybody Specialization", url: "https://www.coursera.org/specializations/python", type: "course", platform: "Coursera" },
+                { title: "Python Tutorial - Full Course for Beginners", url: "https://www.youtube.com/watch?v=_uQrJ0TkZlc", type: "tutorial", platform: "YouTube" },
+                { title: "Python Official Tutorial", url: "https://docs.python.org/3/tutorial/", type: "docs", platform: "Python.org" },
+                { title: "freeCodeCamp Scientific Computing with Python", url: "https://www.freecodecamp.org/learn/scientific-computing-with-python/", type: "course", platform: "freeCodeCamp" },
+            ],
+            java: [
+                { title: "Java Programming Masterclass", url: "https://www.udemy.com/course/java-the-complete-java-developer-course/", type: "course", platform: "Udemy" },
+                { title: "Java Programming and Software Engineering", url: "https://www.coursera.org/specializations/java-programming", type: "course", platform: "Coursera" },
+                { title: "Java Full Course for Beginners", url: "https://www.youtube.com/watch?v=xk4_1vDrzzo", type: "tutorial", platform: "YouTube" },
+                { title: "Oracle Java Tutorials", url: "https://docs.oracle.com/javase/tutorial/", type: "docs", platform: "Oracle" },
+                { title: "JetBrains Academy - Java Developer", url: "https://hyperskill.org/tracks/1", type: "course", platform: "Hyperskill" },
+            ],
+            springboot: [
+                { title: "Spring Boot 3, Spring 6 & Hibernate", url: "https://www.udemy.com/course/spring-hibernate-tutorial/", type: "course", platform: "Udemy" },
+                { title: "Building Scalable Java Microservices with Spring Boot", url: "https://www.coursera.org/learn/google-cloud-java-spring", type: "course", platform: "Coursera" },
+                { title: "Spring Boot Tutorial for Beginners", url: "https://www.youtube.com/watch?v=9SGDpanrc8U", type: "tutorial", platform: "YouTube" },
+                { title: "Spring Boot Official Guides", url: "https://spring.io/guides", type: "docs", platform: "Spring.io" },
+                { title: "Baeldung Spring Boot", url: "https://www.baeldung.com/spring-boot", type: "tutorial", platform: "Baeldung" },
+            ],
+            kubernetes: [
+                { title: "Kubernetes for the Absolute Beginners", url: "https://www.udemy.com/course/learn-kubernetes/", type: "course", platform: "Udemy" },
+                { title: "Google Kubernetes Engine Specialization", url: "https://www.coursera.org/specializations/architecting-google-kubernetes-engine", type: "course", platform: "Coursera" },
+                { title: "Kubernetes Course - Full Beginners Tutorial", url: "https://www.youtube.com/watch?v=X48VuDVv0do", type: "tutorial", platform: "YouTube" },
+                { title: "Kubernetes Official Tutorials", url: "https://kubernetes.io/docs/tutorials/", type: "docs", platform: "Kubernetes.io" },
+                { title: "KodeKloud Kubernetes Training", url: "https://kodekloud.com/courses/certified-kubernetes-administrator-cka/", type: "certification", platform: "KodeKloud" },
+            ],
+            ml: [
+                { title: "Machine Learning A-Z", url: "https://www.udemy.com/course/machinelearning/", type: "course", platform: "Udemy" },
+                { title: "Machine Learning by Andrew Ng", url: "https://www.coursera.org/learn/machine-learning", type: "course", platform: "Coursera" },
+                { title: "Machine Learning Course for Beginners", url: "https://www.youtube.com/watch?v=NWONeJKn6kc", type: "tutorial", platform: "YouTube" },
+                { title: "Google Machine Learning Crash Course", url: "https://developers.google.com/machine-learning/crash-course", type: "course", platform: "Google" },
+                { title: "fast.ai Practical Deep Learning", url: "https://course.fast.ai/", type: "course", platform: "fast.ai" },
+            ],
+            typescript: [
+                { title: "Understanding TypeScript", url: "https://www.udemy.com/course/understanding-typescript/", type: "course", platform: "Udemy" },
+                { title: "TypeScript Full Course", url: "https://www.youtube.com/watch?v=30LWjhZzg50", type: "tutorial", platform: "YouTube" },
+                { title: "TypeScript Official Handbook", url: "https://www.typescriptlang.org/docs/handbook/intro.html", type: "docs", platform: "TypeScript" },
+                { title: "Execute Program - TypeScript", url: "https://www.executeprogram.com/courses/typescript", type: "course", platform: "Execute Program" },
+                { title: "Total TypeScript by Matt Pocock", url: "https://www.totaltypescript.com/", type: "course", platform: "Total TypeScript" },
+            ],
+            go: [
+                { title: "Go: The Complete Developer's Guide", url: "https://www.udemy.com/course/go-the-complete-developers-guide/", type: "course", platform: "Udemy" },
+                { title: "Programming with Google Go Specialization", url: "https://www.coursera.org/specializations/google-golang", type: "course", platform: "Coursera" },
+                { title: "Go Programming – Golang Course", url: "https://www.youtube.com/watch?v=un6ZyFkqFKo", type: "tutorial", platform: "YouTube" },
+                { title: "A Tour of Go (Official)", url: "https://go.dev/tour/welcome/1", type: "docs", platform: "Go.dev" },
+                { title: "Go by Example", url: "https://gobyexample.com/", type: "tutorial", platform: "Go by Example" },
+            ],
+            kotlin: [
+                { title: "The Complete Android 14 & Kotlin Development", url: "https://www.udemy.com/course/the-complete-kotlin-developer-course/", type: "course", platform: "Udemy" },
+                { title: "Android App Development with Kotlin", url: "https://www.coursera.org/specializations/android-app-development", type: "course", platform: "Coursera" },
+                { title: "Kotlin Course for Beginners", url: "https://www.youtube.com/watch?v=EExSSotojVI", type: "tutorial", platform: "YouTube" },
+                { title: "Kotlin Official Docs", url: "https://kotlinlang.org/docs/getting-started.html", type: "docs", platform: "Kotlin" },
+                { title: "Android Developer Training", url: "https://developer.android.com/courses", type: "course", platform: "Android Developers" },
+            ],
+        };
+
+        // 5 employers per skill per country
+        const EMPLOYERS = {
+            Morocco: {
+                react:      ["SQLI", "Capgemini Morocco", "CGI Morocco", "Atos Morocco", "Inetum Morocco"],
+                nodejs:     ["Majorel", "SQLI", "Atos Morocco", "CGI Morocco", "Sopra Banking"],
+                python:     ["OCP Group", "inwi", "CGI Morocco", "UM6P", "Capgemini Morocco"],
+                java:       ["SQLI", "Capgemini Morocco", "Sopra Banking", "CGI Morocco", "Atos Morocco"],
+                springboot: ["Sopra Banking", "SQLI", "Atos Morocco", "Capgemini Morocco", "Inetum Morocco"],
+                kubernetes: ["inwi", "Capgemini Morocco", "CGI Morocco", "Atos Morocco", "SQLI"],
+                ml:         ["OCP Group", "UM6P", "SQLI", "inwi", "Capgemini Morocco"],
+                typescript: ["SQLI", "Majorel", "Atos Morocco", "Inetum Morocco", "CGI Morocco"],
+                go:         ["inwi", "CGI Morocco", "SQLI", "Capgemini Morocco", "Atos Morocco"],
+                kotlin:     ["Capgemini Morocco", "SQLI", "Majorel", "CGI Morocco", "Inetum Morocco"],
+            },
+            France: {
+                react:      ["Capgemini", "Sopra Steria", "Thales", "Doctolib", "Dassault Systèmes"],
+                nodejs:     ["OVHcloud", "Doctolib", "BlaBlaCar", "Ledger", "ManoMano"],
+                python:     ["Criteo", "Datadog", "OVHcloud", "Dassault Systèmes", "Thales"],
+                java:       ["Société Générale", "BNP Paribas", "Thales", "Capgemini", "Atos"],
+                springboot: ["Société Générale", "Sopra Steria", "BNP Paribas", "Capgemini", "Atos"],
+                kubernetes: ["OVHcloud", "Thales", "Airbus", "Scaleway", "Sopra Steria"],
+                ml:         ["Criteo", "Datadog", "Dassault Systèmes", "Thales", "Airbus"],
+                typescript: ["Doctolib", "BlaBlaCar", "Ledger", "ManoMano", "Qonto"],
+                go:         ["OVHcloud", "Scaleway", "Doctolib", "Qonto", "Alan"],
+                kotlin:     ["Deezer", "Criteo", "Doctolib", "BlaBlaCar", "Qonto"],
+            },
+            USA: {
+                react:      ["Meta", "Netflix", "Airbnb", "Stripe", "Shopify"],
+                nodejs:     ["Netflix", "PayPal", "LinkedIn", "Uber", "Twilio"],
+                python:     ["Google", "Meta", "Stripe", "Dropbox", "Reddit"],
+                java:       ["Amazon", "Goldman Sachs", "Google", "Oracle", "JPMorgan"],
+                springboot: ["Amazon", "Netflix", "Capital One", "JPMorgan", "Intuit"],
+                kubernetes: ["Google", "Microsoft", "Red Hat", "Datadog", "HashiCorp"],
+                ml:         ["Google", "OpenAI", "Meta", "Anthropic", "Tesla"],
+                typescript: ["Microsoft", "Vercel", "Stripe", "Figma", "Notion"],
+                go:         ["Google", "Uber", "Cloudflare", "Docker Inc", "CrowdStrike"],
+                kotlin:     ["Google", "Square", "Pinterest", "DoorDash", "Cash App"],
+            },
+        };
+
+        const CITIES = {
+            Morocco: ["Casablanca", "Rabat", "Marrakech", "Tangier"],
+            France:  ["Paris", "Lyon", "Marseille", "Toulouse"],
+            USA:     ["San Francisco", "New York", "Seattle", "Austin"],
+        };
+
+        const SALARY_MULT = { Morocco: 0.25, France: 0.65, USA: 1.0 };
+        const CURRENCIES  = { Morocco: "MAD", France: "EUR", USA: "USD" };
+
+        // ===== GENERIC FALLBACK for skills without explicit data =====
+        function getResourcesForSkill(skillId, skillName) {
+            if (LEARNING_RESOURCES[skillId]) return LEARNING_RESOURCES[skillId];
+            const encoded = encodeURIComponent(skillName);
+            return [
+                { title: `${skillName} - Complete Course 2025`, url: `https://www.udemy.com/courses/search/?q=${encoded}`, type: "course", platform: "Udemy" },
+                { title: `${skillName} Specialization`, url: `https://www.coursera.org/search?query=${encoded}`, type: "course", platform: "Coursera" },
+                { title: `${skillName} Full Tutorial`, url: `https://www.youtube.com/results?search_query=${encoded}+tutorial`, type: "tutorial", platform: "YouTube" },
+                { title: `${skillName} Official Documentation`, url: `https://www.google.com/search?q=${encoded}+official+docs`, type: "docs", platform: "Docs" },
+                { title: `Learn ${skillName} - freeCodeCamp`, url: `https://www.freecodecamp.org/news/search/?query=${encoded}`, type: "course", platform: "freeCodeCamp" },
+            ];
+        }
+
+        const MOROCCO_COMPANIES = ["SQLI", "Capgemini Morocco", "CGI Morocco", "Atos Morocco", "Inetum Morocco", "Sopra Banking", "Majorel", "inwi", "OCP Group", "UM6P"];
+        const FRANCE_COMPANIES  = ["Capgemini", "Sopra Steria", "Thales", "Doctolib", "OVHcloud", "BNP Paribas", "Atos", "Dassault Systèmes", "Criteo", "Qonto"];
+        const USA_COMPANIES     = ["Google", "Microsoft", "Amazon", "Meta", "Apple", "Netflix", "Stripe", "Uber", "Airbnb", "Datadog"];
+
+        function getEmployersForSkill(skillId, country) {
+            if (EMPLOYERS[country] && EMPLOYERS[country][skillId]) return EMPLOYERS[country][skillId];
+            // Pick 5 pseudo-random companies based on skillId hash
+            const pool = country === "Morocco" ? MOROCCO_COMPANIES : country === "France" ? FRANCE_COMPANIES : USA_COMPANIES;
+            let hash = 0;
+            for (let i = 0; i < skillId.length; i++) hash = ((hash << 5) - hash + skillId.charCodeAt(i)) | 0;
+            const start = Math.abs(hash) % pool.length;
+            const result = [];
+            for (let i = 0; i < 5; i++) result.push(pool[(start + i) % pool.length]);
+            return result;
+        }
+
+        // ===== SCRAPE REAL JOBS FROM REMOTIVE =====
+        let remotiveJobsCache = null;
+
+        async function fetchRemotiveJobs() {
+            if (remotiveJobsCache) return remotiveJobsCache;
+            log('🌐 Fetching real jobs from Remotive API...');
+            try {
+                const res = await fetch('https://remotive.com/api/remote-jobs?limit=300');
+                const data = await res.json();
+                remotiveJobsCache = data.jobs || [];
+                log(`✅ Fetched ${remotiveJobsCache.length} real jobs from Remotive`, 'success');
+                return remotiveJobsCache;
+            } catch (e) {
+                log(`⚠️ Remotive API failed: ${e.message}, using fallback`, 'warning');
+                return [];
+            }
+        }
+
+        function matchJobsForSkill(allJobs, skill) {
+            const terms = skill.searchTerms.map(t => t.toLowerCase());
+            return allJobs.filter(job => {
+                const text = `${job.title || ''} ${(job.tags || []).join(' ')} ${job.description || ''}`.toLowerCase();
+                return terms.some(term => text.includes(term));
+            });
+        }
+
+        function daysSincePosted(dateStr) {
+            if (!dateStr) return 7;
+            const posted = new Date(dateStr).getTime();
+            return Math.max(0, Math.floor((Date.now() - posted) / 86400000));
+        }
+
+        async function getJobListingsForSkill(skill, country) {
+            const LINKEDIN_GEO = { Morocco: "102787409", France: "105015875", USA: "103644278" };
+            const INDEED_DOMAIN = { Morocco: "ma.indeed.com", France: "fr.indeed.com", USA: "www.indeed.com" };
+            const cities = CITIES[country];
+            const employers = getEmployersForSkill(skill.id, country);
+            const mult = SALARY_MULT[country];
+            const cur = CURRENCIES[country];
+
+            // 6 country-specific local jobs with LinkedIn/Indeed links
+            const localTemplates = [
+                { title: `Senior ${skill.name} Engineer`,       type: "Full-time" },
+                { title: `${skill.name} Developer`,             type: "Full-time" },
+                { title: `${skill.name} Team Lead`,             type: "Full-time" },
+                { title: `Junior ${skill.name} Developer`,      type: "Full-time" },
+                { title: `${skill.name} Consultant`,            type: "Contract"  },
+                { title: `${skill.name} Full-Stack Developer`,  type: "Full-time" },
+            ];
+
+            const localJobs = localTemplates.map((t, i) => {
+                const city = cities[i % cities.length];
+                const company = employers[i % employers.length];
+                const seniorityMult = i === 0 ? 1.3 : i === 2 ? 1.35 : i === 3 ? 0.6 : 1.0;
+                const base = Math.floor((70000 + Math.random() * 90000) * mult * seniorityMult);
+                const hi = Math.floor(base * 1.25);
+                const source = i % 2 === 0 ? "LinkedIn" : "Indeed";
+                const searchQuery = `${t.title} ${company}`;
+                const url = source === "LinkedIn"
+                    ? `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(searchQuery)}&location=${encodeURIComponent(city + ', ' + country)}&geoId=${LINKEDIN_GEO[country]}&f_TPR=r604800`
+                    : `https://${INDEED_DOMAIN[country]}/jobs?q=${encodeURIComponent(searchQuery)}&l=${encodeURIComponent(city)}&fromage=7`;
+
+                return {
+                    title: t.title,
+                    company,
+                    location: `${city}, ${country}`,
+                    salaryRange: `${cur} ${(base/1000).toFixed(0)}k–${(hi/1000).toFixed(0)}k`,
+                    type: t.type,
+                    url,
+                    source,
+                    postedDaysAgo: Math.floor(Math.random() * 5),
+                };
+            });
+
+            // 2 Remotive remote jobs (rotated per country so each country gets different ones)
+            const allJobs = await fetchRemotiveJobs();
+            const matched = matchJobsForSkill(allJobs, skill);
+            const countryIndex = COUNTRIES.indexOf(country);
+            const offset = countryIndex * 2;
+            const remoteSlice = matched.slice(offset, offset + 2);
+
+            const remoteJobs = remoteSlice.map(job => ({
+                title: job.title || '',
+                company: job.company_name || '',
+                location: (job.candidate_required_location || 'Remote'),
+                salaryRange: job.salary || 'Not specified',
+                type: job.job_type === 'contract' ? 'Contract' : 'Full-time',
+                url: job.url || '',
+                source: 'Remotive',
+                postedDaysAgo: daysSincePosted(job.publication_date),
+            }));
+
+            return [...localJobs, ...remoteJobs];
+        }
+
+        // Arbitrage skills (per country) — top 15 unique from diverse categories
+        const ARB_SKILL_INDICES = [0, 3, 4, 5, 6, 14, 17, 21, 34, 42, 49, 80, 85, 90, 95].map(i => Math.min(i, SKILLS.length - 1));
+        // Trending skills (per country) — 15 unique, no overlap
+        const TREND_SKILL_INDICES = [1, 2, 7, 8, 9, 15, 20, 30, 40, 50, 60, 70, 75, 82, 88].map(i => Math.min(i, SKILLS.length - 1));
+
+        async function seedSkills() {
+            log('📚 Seeding skills collection...');
+            let batch = writeBatch(db);
+            let count = 0;
+            for (const s of SKILLS) {
+                batch.set(doc(db, 'skills', s.id), { name: s.name, category: s.category, tags: s.searchTerms || [] });
+                count++;
+                if (count >= 450) {
+                    await batch.commit();
+                    batch = writeBatch(db);
+                    count = 0;
+                }
+            }
+            if (count > 0) await batch.commit();
+            log(`✅ Seeded ${SKILLS.length} skills`, 'success');
+        }
+
+        async function seedSkillMetrics() {
+            log('📊 Seeding skill metrics with REAL job listings and learning resources...');
+            const now = Date.now();
+            const DAY_MS = 86400000;
+
+            // Pre-fetch all Remotive jobs once
+            await fetchRemotiveJobs();
+
+            let total = 0;
+            let realJobCount = 0;
+
+            for (const country of COUNTRIES) {
+                log(`  🌍 Processing ${country}...`);
+                const mult = SALARY_MULT[country];
+                let batch = writeBatch(db);
+                let batchCount = 0;
+
+                for (const s of SKILLS) {
+                    const demand = 45 + Math.random() * 50;
+                    const supply = 15 + Math.random() * 55;
+                    const baseSalary = 80000 + Math.floor(Math.random() * 100000);
+                    const salary = Math.floor(baseSalary * mult);
+
+                    // 90-day trend data
+                    const demandTrend = [], salaryTrend = [];
+                    let dB = demand - 10, sB = salary - 5000;
+                    for (let d = 89; d >= 0; d--) {
+                        dB += (Math.random() - 0.45) * 2;
+                        dB = Math.max(5, Math.min(98, dB));
+                        sB += (Math.random() - 0.45) * 800 * mult;
+                        sB = Math.max(10000, sB);
+                        demandTrend.push({ timestamp: now - d * DAY_MS, value: Math.round(dB * 100) / 100 });
+                        salaryTrend.push({ timestamp: now - d * DAY_MS, value: Math.round(sB) });
+                    }
+
+                    const employers = getEmployersForSkill(s.id, country);
+                    const jobListings = await getJobListingsForSkill(s, country);
+                    realJobCount += jobListings.filter(j => j.source === 'Remotive').length;
+
+                    const docId = `${s.id}_${country.toLowerCase()}`;
+                    batch.set(doc(db, 'skillMetrics', docId), {
+                        skillId: s.id, skillName: s.name, category: s.category, location: country,
+                        demandScore: Math.round(demand * 10) / 10,
+                        supplyScore: Math.round(supply * 10) / 10,
+                        arbitrageScore: Math.round((demand * 0.6 + (100 - supply) * 0.3) * 10) / 10,
+                        avgSalary: salary,
+                        medianSalary: Math.floor(salary * 0.92),
+                        freelanceHourlyRate: Math.floor((80000 + Math.random() * 100000) / 1800),
+                        jobPostCount: 50 + Math.floor(Math.random() * 500),
+                        freelanceGigCount: 10 + Math.floor(Math.random() * 150),
+                        demandTrend, salaryTrend,
+                        topEmployers: employers,
+                        jobListings,
+                        learningResources: getResourcesForSkill(s.id, s.name),
+                        updatedAt: now,
+                    });
+                    total++;
+                    batchCount++;
+                    if (batchCount >= 400) {
+                        await batch.commit();
+                        batch = writeBatch(db);
+                        batchCount = 0;
+                    }
+                }
+                if (batchCount > 0) await batch.commit();
+                log(`  ✅ ${country}: ${SKILLS.length} skills seeded`, 'success');
+            }
+            log(`✅ Seeded ${total} skill metrics — ${realJobCount} real jobs from Remotive + local board links`, 'success');
+        }
+
+        async function seedArbitrageOpportunities() {
+            log('🎯 Seeding arbitrage opportunities (per country)...');
+            const batch = writeBatch(db);
+            const now = Date.now();
+            let total = 0;
+            for (const country of COUNTRIES) {
+                const mult = SALARY_MULT[country];
+                for (const idx of ARB_SKILL_INDICES) {
+                    const s = SKILLS[idx];
+                    const demand = 70 + Math.random() * 25;
+                    const supply = 15 + Math.random() * 35;
+                    const arb = demand * 0.6 + (100 - supply) * 0.3 + Math.random() * 5;
+                    const salary = Math.floor((80000 + Math.random() * 100000) * mult);
+                    const change = 5 + Math.round(Math.random() * 200) / 10;
+                    batch.set(doc(collection(db, 'arbitrageOpportunities')), {
+                        skillId: s.id, skillName: s.name, location: country,
+                        arbitrageScore: Math.round(arb * 10) / 10,
+                        demandScore: Math.round(demand * 10) / 10,
+                        supplyScore: Math.round(supply * 10) / 10,
+                        avgSalary: salary,
+                        changePercent: change, direction: "up",
+                        summary: `${s.name} engineers in ${country} earn ${(1.3 + Math.random()).toFixed(1)}x more this quarter.`,
+                        updatedAt: now,
+                    });
+                    total++;
+                }
+            }
+            await batch.commit();
+            log(`✅ Seeded ${total} arbitrage opportunities`, 'success');
+        }
+
+        async function seedTrendingSkills() {
+            log('📈 Seeding trending skills (per country)...');
+            const batch = writeBatch(db);
+            const now = Date.now();
+            let total = 0;
+            for (const country of COUNTRIES) {
+                for (const idx of TREND_SKILL_INDICES) {
+                    const s = SKILLS[idx];
+                    const change = 5 + Math.round(Math.random() * 250) / 10;
+                    batch.set(doc(collection(db, 'trendingSkills')), {
+                        skillId: s.id, skillName: s.name, location: country,
+                        trendDirection: Math.random() > 0.15 ? "up" : "down",
+                        changePercent: change, period: "7d",
+                        updatedAt: now,
+                    });
+                    total++;
+                }
+            }
+            await batch.commit();
+            log(`✅ Seeded ${total} trending skills`, 'success');
+        }
+
+        async function clearCollection(name) {
+            log(`  🗑️ Clearing '${name}'...`);
+            let totalDeleted = 0;
+            // Delete in small loops to avoid transaction size limits
+            while (true) {
+                const snap = await getDocs(collection(db, name));
+                if (snap.empty) break;
+                // Delete up to 100 at a time using individual deleteDoc (safer than batches for large docs)
+                const chunk = snap.docs.slice(0, 100);
+                const promises = chunk.map(d => deleteDoc(d.ref));
+                await Promise.all(promises);
+                totalDeleted += chunk.length;
+                log(`    Deleted ${totalDeleted} so far from '${name}'...`);
+            }
+            if (totalDeleted > 0) {
+                log(`🗑️ Cleared ${totalDeleted} docs from '${name}'`, 'warning');
+            } else {
+                log(`🗑️ Collection '${name}' is already empty`);
+            }
+        }
+
+        window.clearAndReseed = async function() {
+            if (!confirm('This will DELETE all existing data and reseed. Continue?')) return;
+            const btn = document.getElementById('clearBtn');
+            btn.disabled = true;
+            try {
+                log('🔐 Signing in anonymously...');
+                await signInAnonymously(auth);
+                log('✅ Authenticated', 'success');
+                log('\n🗑️ Clearing old data...');
+                await clearCollection('skillMetrics');
+                await clearCollection('arbitrageOpportunities');
+                await clearCollection('trendingSkills');
+                await clearCollection('skills');
+                log('✅ Old data cleared\n');
+                await doSeed();
+            } catch (error) {
+                log(`\n❌ Error: ${error.message}`, 'error');
+                console.error(error);
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        window.seedAll = async function() {
+            const btn = document.getElementById('seedBtn');
+            btn.disabled = true;
+            try {
+                log('🔐 Signing in anonymously...');
+                await signInAnonymously(auth);
+                log('✅ Authenticated', 'success');
+                await doSeed();
+            } catch (error) {
+                log(`\n❌ Error: ${error.message}`, 'error');
+                console.error(error);
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        async function doSeed() {
+            await seedSkills();
+            await seedSkillMetrics();
+            await seedArbitrageOpportunities();
+            await seedTrendingSkills();
+            log('\n🎉 All data seeded successfully!', 'success');
+            log('✅ Your Android app is ready to run!', 'success');
+        }
+
+        window.clearLogs = function() {
+            document.getElementById('status').innerHTML = '';
+        };
+
+        log('✅ Seeder ready. Click "Seed All Collections" to start.');
+    </script>
+</body>
+</html>
+
