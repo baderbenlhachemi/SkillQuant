@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.badereddine.skillquant.App
 import com.badereddine.skillquant.di.appModule
+import com.badereddine.skillquant.di.platformModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.GlobalContext
@@ -22,7 +23,7 @@ class MainActivity : ComponentActivity() {
             startKoin {
                 androidLogger(Level.ERROR)
                 androidContext(applicationContext)
-                modules(appModule)
+                modules(appModule, platformModule)
             }
         }
 

@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 data class UserProfile(
     val id: String = "",
     val email: String = "",
+    val displayName: String = "",
     val tier: String = "free",
     val watchlist: List<String> = emptyList(),
     val currentSkills: List<String> = emptyList(),
@@ -13,6 +14,7 @@ data class UserProfile(
     val fcmToken: String = "",
     val onboardingComplete: Boolean = false,
     val darkThemeOverride: String = "system",  // "system", "dark", "light"
+    val isAnonymous: Boolean = true,
     val createdAt: Long = 0L
 )
 

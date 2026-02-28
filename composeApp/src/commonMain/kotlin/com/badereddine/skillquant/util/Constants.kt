@@ -26,5 +26,9 @@ object Constants {
     // Tiers
     const val TIER_FREE = "free"
     const val TIER_PRO = "pro"
+
+    // Google Sign-In: Web client ID from Firebase Console → Auth → Google provider
+    // Replace this after enabling Google Sign-In in Firebase Console
+    const val GOOGLE_WEB_CLIENT_ID = "547895354199-na63sl58l5q8j2victbno11e6naabroh.apps.googleusercontent.com"
 }
 

@@ -43,7 +43,9 @@ service cloud.firestore {
       allow create: if request.auth != null && request.auth.uid == userId;
       allow update: if request.auth != null && request.auth.uid == userId
                     && request.resource.data.diff(resource.data).affectedKeys()
-                       .hasOnly(['watchlist', 'notificationsEnabled', 'fcmToken']);
+                       .hasOnly(['watchlist', 'notificationsEnabled', 'fcmToken',
+                                 'displayName', 'email', 'isAnonymous',
+                                 'darkThemeOverride', 'currentSkills', 'onboardingComplete']);
       allow delete: if false;
     }
 

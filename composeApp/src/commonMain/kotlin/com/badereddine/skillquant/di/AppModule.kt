@@ -1,5 +1,6 @@
 package com.badereddine.skillquant.di
 
+import com.badereddine.skillquant.auth.GoogleAuthHelper
 import com.badereddine.skillquant.data.repository.FirestoreAlertRepository
 import com.badereddine.skillquant.data.repository.FirestoreSkillRepository
 import com.badereddine.skillquant.data.repository.FirestoreUserRepository
@@ -48,4 +49,11 @@ val appModule = module {
     factoryOf(::NewsViewModel)
     factoryOf(::OnboardingViewModel)
 }
+
+/**
+ * Platform-specific module that provides GoogleAuthHelper.
+ * Android: uses Context from Koin's androidContext.
+ * JVM/Desktop: provides a stub.
+ */
+expect val platformModule: org.koin.core.module.Module
 

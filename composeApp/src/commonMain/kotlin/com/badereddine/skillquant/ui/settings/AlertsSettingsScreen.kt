@@ -73,6 +73,48 @@ class AlertsSettingsScreen : Screen {
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(16.dp)
                 ) {
+                    // Auth message snackbar
+                    if (state.authMessage != null) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (state.authMessage!!.startsWith("✅"))
+                                        PositiveGreen.copy(alpha = 0.15f)
+                                    else MaterialTheme.colorScheme.errorContainer
+                                )
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        state.authMessage!!,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TextButton(onClick = { viewModel.clearAuthMessage() }) {
+                                        Text("✕")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Account card
+                    item {
+                        AccountCard(
+                            isAnonymous = state.isAnonymous,
+                            displayName = state.displayName,
+                            email = state.email,
+                            isSigningIn = state.isSigningIn,
+                            onSignIn = { viewModel.signInWithGoogle() },
+                            onSignOut = { viewModel.signOut() }
+                        )
+                    }
+
                     // Notifications toggle
                     item {
                         Card(
@@ -430,3 +472,109 @@ private fun ThemeToggleCard(viewModel: AlertsSettingsViewModel, currentTheme: St
     }
 }
 
+@Composable
+private fun AccountCard(
+    isAnonymous: Boolean,
+    displayName: String,
+    email: String,
+    isSigningIn: Boolean,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "👤 Account",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(12.dp))
+
+            if (isAnonymous) {
+                // Anonymous user — show sign-in prompt
+                Text(
+                    "Sign in to sync your data across devices",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = onSignIn,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    enabled = !isSigningIn
+                ) {
+                    if (isSigningIn) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Signing in…")
+                    } else {
+                        Text("🔐 Sign in with Google")
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Your watchlist, skills & preferences will be preserved",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                // Signed-in user — show profile
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Avatar circle with initial
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(GoldAccent.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = displayName.firstOrNull()?.uppercase() ?: email.firstOrNull()?.uppercase() ?: "?",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = GoldAccent
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        if (displayName.isNotBlank()) {
+                            Text(
+                                displayName,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        if (email.isNotBlank()) {
+                            Text(
+                                email,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = onSignOut,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Sign Out")
+                }
+            }
+        }
+    }
+}

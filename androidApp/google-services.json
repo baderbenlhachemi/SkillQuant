@@ -12,7 +12,20 @@
           "package_name": "com.badereddine.skillquant"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "547895354199-o2p2s163h6jsdlrb4tigfke2c1d9mum1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.badereddine.skillquant",
+            "certificate_hash": "29c8a1433e6546ffc69c7c851d8ec669ac86b6ac"
+          }
+        },
+        {
+          "client_id": "547895354199-na63sl58l5q8j2victbno11e6naabroh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAmui-04XDeZlO7xGozZsxFozLknoNLVAo"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "547895354199-na63sl58l5q8j2victbno11e6naabroh.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

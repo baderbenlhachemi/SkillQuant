@@ -2,6 +2,7 @@ package com.badereddine.skillquant.ui.settings
 
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import com.badereddine.skillquant.auth.GoogleAuthHelper
 import com.badereddine.skillquant.domain.model.Alert
 import com.badereddine.skillquant.domain.model.UserProfile
 import com.badereddine.skillquant.domain.repository.AlertRepository
@@ -18,26 +19,37 @@ data class SettingsUiState(
     val isLoading: Boolean = true,
     val error: String? = null,
     val skillNames: Map<String, String> = emptyMap(),
-    val themeMode: String = "system"
+    val themeMode: String = "system",
+    val isAnonymous: Boolean = true,
+    val isSigningIn: Boolean = false,
+    val authMessage: String? = null
 ) {
     val isPro: Boolean get() = userProfile?.tier == Constants.TIER_PRO
     val watchlistCount: Int get() = userProfile?.watchlist?.size ?: 0
     val watchlistLimit: Int get() = if (isPro) Int.MAX_VALUE else Constants.FREE_WATCHLIST_LIMIT
     val notificationsEnabled: Boolean get() = userProfile?.notificationsEnabled ?: true
+    val displayName: String get() = userProfile?.displayName ?: ""
+    val email: String get() = userProfile?.email ?: ""
 }
 
 class AlertsSettingsViewModel(
     private val alertRepository: AlertRepository,
     private val userRepository: UserRepository,
     private val skillRepository: SkillRepository,
-    private val themeManager: ThemeManager
+    private val themeManager: ThemeManager,
+    private val googleAuthHelper: GoogleAuthHelper
 ) : ScreenModel {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
-        _uiState.update { it.copy(themeMode = themeManager.themeMode.value) }
+        _uiState.update {
+            it.copy(
+                themeMode = themeManager.themeMode.value,
+                isAnonymous = userRepository.isAnonymous()
+            )
+        }
         loadSettings()
     }
 
@@ -49,7 +61,13 @@ class AlertsSettingsViewModel(
 
                 launch {
                     userRepository.getUserProfile(userId).collect { profile ->
-                        _uiState.update { it.copy(userProfile = profile, isLoading = false) }
+                        _uiState.update {
+                            it.copy(
+                                userProfile = profile,
+                                isLoading = false,
+                                isAnonymous = userRepository.isAnonymous()
+                            )
+                        }
                         // Resolve skill names for watchlist
                         profile?.watchlist?.forEach { skillId ->
                             if (skillId !in _uiState.value.skillNames) {
@@ -73,6 +91,66 @@ class AlertsSettingsViewModel(
                 _uiState.update { it.copy(isLoading = false) }
             }
         }
+    }
+
+    fun signInWithGoogle() {
+        screenModelScope.launch {
+            _uiState.update { it.copy(isSigningIn = true, authMessage = null) }
+            try {
+                val idToken = googleAuthHelper.getGoogleIdToken()
+                if (idToken == null) {
+                    _uiState.update { it.copy(isSigningIn = false) }
+                    return@launch
+                }
+
+                // If currently anonymous, try to link (preserves data)
+                // If already signed in, just sign in with the new account
+                if (userRepository.isAnonymous()) {
+                    userRepository.linkGoogleAccount(idToken)
+                } else {
+                    userRepository.signInWithGoogle(idToken)
+                }
+
+                _uiState.update {
+                    it.copy(
+                        isSigningIn = false,
+                        isAnonymous = false,
+                        authMessage = "✅ Signed in successfully!"
+                    )
+                }
+                // Reload settings with the (possibly new) user
+                loadSettings()
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSigningIn = false,
+                        authMessage = e.message ?: "Sign-in failed"
+                    )
+                }
+            }
+        }
+    }
+
+    fun signOut() {
+        screenModelScope.launch {
+            try {
+                userRepository.signOut()
+                _uiState.update {
+                    it.copy(
+                        isAnonymous = true,
+                        authMessage = "Signed out",
+                        userProfile = null
+                    )
+                }
+                loadSettings()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(authMessage = "Sign-out failed: ${e.message}") }
+            }
+        }
+    }
+
+    fun clearAuthMessage() {
+        _uiState.update { it.copy(authMessage = null) }
     }
 
     fun toggleNotifications() {
