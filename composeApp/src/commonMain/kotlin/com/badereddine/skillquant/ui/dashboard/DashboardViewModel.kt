@@ -176,7 +176,13 @@ class DashboardViewModel(
                             _uiState.update {
                                 it.copy(
                                     userTier = profile?.tier ?: Constants.TIER_FREE,
+                                    // Never show onboarding if:
+                                    //  - user is already Google-signed-in (not anonymous)
+                                    //  - user already has items in their watchlist
+                                    //  - onboardingComplete flag is set
                                     showOnboarding = profile?.onboardingComplete == false
+                                        && (profile.isAnonymous)
+                                        && profile.watchlist.isEmpty()
                                 )
                             }
                             profile?.darkThemeOverride?.let { themeManager.setThemeMode(it) }

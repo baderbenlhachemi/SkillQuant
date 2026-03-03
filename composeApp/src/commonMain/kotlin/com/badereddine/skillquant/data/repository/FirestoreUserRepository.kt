@@ -95,19 +95,44 @@ class FirestoreUserRepository(
 
     override suspend fun linkGoogleAccount(idToken: String): String {
         val credential = GoogleAuthProvider.credential(idToken, null)
+
+        // Snapshot the anonymous user's data BEFORE any auth change
+        val anonymousUid = auth.currentUser?.uid
+        var anonWatchlist: List<String> = emptyList()
+        var anonSkills: List<String> = emptyList()
+        if (anonymousUid != null) {
+            runCatching {
+                val doc = firestore.collection(Constants.COLLECTION_USER_PROFILES)
+                    .document(anonymousUid).get()
+                if (doc.exists) {
+                    anonWatchlist = runCatching { doc.get<List<String>>("watchlist") }.getOrNull() ?: emptyList()
+                    anonSkills = runCatching { doc.get<List<String>>("currentSkills") }.getOrNull() ?: emptyList()
+                }
+            }
+        }
+
         return try {
-            // Try to link the anonymous account to Google (preserves UID + data)
+            // Happy path: link anonymous → Google (same UID, all data preserved)
             val result = auth.currentUser!!.linkWithCredential(credential)
             val user = result.user!!
-            updateProfileAfterGoogleLink(user.uid, user.displayName, user.email)
+            updateProfileAfterGoogleLink(user.uid, user.displayName, user.email, markOnboardingComplete = true)
             user.uid
-        } catch (e: Exception) {
-            // If "credential-already-in-use", the Google account was used before.
-            // Fall back to signInWithCredential — this creates/restores the Google user.
+        } catch (_: Exception) {
+            // "credential-already-in-use": the Google account exists separately.
+            // Sign in to that account, then MERGE the anonymous user's watchlist into it.
             val result = auth.signInWithCredential(credential)
             val user = result.user!!
             ensureProfileExists(user.uid, isAnonymous = false)
-            updateProfileAfterGoogleLink(user.uid, user.displayName, user.email)
+            updateProfileAfterGoogleLink(user.uid, user.displayName, user.email, markOnboardingComplete = true)
+
+            // Migrate watchlist and currentSkills from the anonymous profile
+            val docRef = firestore.collection(Constants.COLLECTION_USER_PROFILES).document(user.uid)
+            if (anonWatchlist.isNotEmpty()) {
+                docRef.update("watchlist" to FieldValue.arrayUnion(*anonWatchlist.toTypedArray()))
+            }
+            if (anonSkills.isNotEmpty()) {
+                docRef.update("currentSkills" to FieldValue.arrayUnion(*anonSkills.toTypedArray()))
+            }
             user.uid
         }
     }
@@ -117,7 +142,7 @@ class FirestoreUserRepository(
         val result = auth.signInWithCredential(credential)
         val user = result.user ?: throw IllegalStateException("Google sign-in failed")
         ensureProfileExists(user.uid, isAnonymous = false)
-        updateProfileAfterGoogleLink(user.uid, user.displayName, user.email)
+        updateProfileAfterGoogleLink(user.uid, user.displayName, user.email, markOnboardingComplete = true)
         return user.uid
     }
 
@@ -137,25 +162,30 @@ class FirestoreUserRepository(
                     "displayName" to "",
                     "tier" to Constants.TIER_FREE,
                     "watchlist" to emptyList<String>(),
+                    "currentSkills" to emptyList<String>(),
                     "notificationsEnabled" to true,
                     "fcmToken" to "",
                     "isAnonymous" to isAnonymous,
+                    // Non-anonymous users coming from Google never need onboarding
+                    "onboardingComplete" to !isAnonymous,
                     "createdAt" to Clock.System.now().toEpochMilliseconds()
                 )
             )
         }
     }
 
-    private suspend fun updateProfileAfterGoogleLink(userId: String, displayName: String?, email: String?) {
-        val updates = mutableMapOf<String, Any>(
-            "isAnonymous" to false
-        )
+    private suspend fun updateProfileAfterGoogleLink(
+        userId: String,
+        displayName: String?,
+        email: String?,
+        markOnboardingComplete: Boolean = false
+    ) {
+        val updates = mutableMapOf<String, Any>("isAnonymous" to false)
         if (!displayName.isNullOrBlank()) updates["displayName"] = displayName
         if (!email.isNullOrBlank()) updates["email"] = email
+        if (markOnboardingComplete) updates["onboardingComplete"] = true
 
-        val docRef = firestore.collection(Constants.COLLECTION_USER_PROFILES).document(userId)
-        // Use set with merge to handle both existing and new docs
-        docRef.update(updates)
+        firestore.collection(Constants.COLLECTION_USER_PROFILES).document(userId).update(updates)
     }
 }
 

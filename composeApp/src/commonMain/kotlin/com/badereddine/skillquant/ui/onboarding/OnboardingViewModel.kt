@@ -5,8 +5,10 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import com.badereddine.skillquant.domain.model.Skill
 import com.badereddine.skillquant.domain.repository.SkillRepository
 import com.badereddine.skillquant.domain.repository.UserRepository
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 
 data class OnboardingUiState(
     val step: Int = 0, // 0=welcome, 1=pick skills, 2=done
@@ -23,11 +25,13 @@ class OnboardingViewModel(
     private val _uiState = MutableStateFlow(OnboardingUiState())
     val uiState: StateFlow<OnboardingUiState> = _uiState.asStateFlow()
 
+    private val supervisedScope = screenModelScope + SupervisorJob()
+
     init {
-        screenModelScope.launch {
-            skillRepository.getAllSkills().collect { skills ->
-                _uiState.update { it.copy(allSkills = skills) }
-            }
+        supervisedScope.launch {
+            skillRepository.getAllSkills()
+                .catch { }
+                .collect { skills -> _uiState.update { it.copy(allSkills = skills) } }
         }
     }
 
@@ -43,21 +47,23 @@ class OnboardingViewModel(
 
     fun finishOnboarding(onComplete: () -> Unit) {
         _uiState.update { it.copy(isSaving = true) }
-        screenModelScope.launch {
+        supervisedScope.launch {
             try {
                 val userId = userRepository.getCurrentUserId()
                     ?: userRepository.signInAnonymously()
-                userRepository.updateCurrentSkills(userId, _uiState.value.selectedSkills)
+                val selected = _uiState.value.selectedSkills
+                // Save as currentSkills AND add to watchlist so personalisation
+                // (news, radar, learning path) works immediately
+                userRepository.updateCurrentSkills(userId, selected)
+                userRepository.updateWatchlist(userId, selected)
                 userRepository.completeOnboarding(userId)
-                onComplete()
-            } catch (_: Exception) {
-                onComplete() // Still navigate away
-            }
+            } catch (_: Exception) { }
+            onComplete()
         }
     }
 
     fun skipOnboarding(onComplete: () -> Unit) {
-        screenModelScope.launch {
+        supervisedScope.launch {
             try {
                 val userId = userRepository.getCurrentUserId()
                     ?: userRepository.signInAnonymously()
@@ -67,4 +73,3 @@ class OnboardingViewModel(
         }
     }
 }
-
