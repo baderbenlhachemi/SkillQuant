@@ -64,6 +64,15 @@ fun Double.toSalaryString(location: String): String {
 fun Long.toSalaryString(): String = this.toDouble().toSalaryString()
 fun Long.toSalaryString(location: String): String = this.toDouble().toSalaryString(location)
 
+/**
+ * Formats a freelance hourly rate (stored in USD) into the local currency/unit.
+ * Morocco: stored as MAD/hr already after seeding; France: EUR/hr; USA: USD/hr.
+ */
+fun Double.toFreelanceRateString(location: String): String {
+    val symbol = currencySymbol(location)
+    return "$symbol${this.toInt()}/hr"
+}
+
 fun currencySymbol(location: String): String = when (location.lowercase()) {
     "morocco" -> "MAD "
     "france" -> "€"

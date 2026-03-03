@@ -25,6 +25,7 @@ import com.badereddine.skillquant.ui.components.TrendChart
 import com.badereddine.skillquant.ui.theme.*
 import com.badereddine.skillquant.util.Constants
 import com.badereddine.skillquant.util.toSalaryString
+import com.badereddine.skillquant.util.toFreelanceRateString
 import org.koin.core.parameter.parametersOf
 import cafe.adriel.voyager.koin.koinScreenModel
 
@@ -630,7 +631,7 @@ private fun SalaryCard(
                 }
                 SalaryMetric(
                     label = "Freelance",
-                    value = "$${freelanceRate.toInt()}/hr"
+                    value = freelanceRate.toFreelanceRateString(location)
                 )
             }
         }

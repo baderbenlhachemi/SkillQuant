@@ -30,6 +30,26 @@ const db = admin.firestore();
 
 const COUNTRIES = ["Morocco", "France", "USA"];
 
+// ── Per-country baseline salaries IN LOCAL CURRENCY ──────────────────────────
+// Morocco: MAD/year  (1 USD ≈ 10 MAD; mid-level dev earns ~120k–250k MAD/yr)
+// France:  EUR/year  (mid-level dev earns ~40k–65k EUR/yr)
+// USA:     USD/year  (mid-level dev earns ~100k–180k USD/yr)
+const SALARY_BASE: Record<string, { min: number; max: number }> = {
+  Morocco: { min: 80_000,  max: 300_000  }, // MAD/yr
+  France:  { min: 35_000,  max: 75_000   }, // EUR/yr
+  USA:     { min: 80_000,  max: 220_000  }, // USD/yr
+};
+
+// Freelance hourly rates in local currency
+// Morocco: ~150–600 MAD/hr for remote freelance work
+// France:  ~35–120 EUR/hr
+// USA:     ~40–200 USD/hr
+const FREELANCE_BASE: Record<string, { min: number; max: number }> = {
+  Morocco: { min: 150, max: 600  },
+  France:  { min: 35,  max: 120  },
+  USA:     { min: 40,  max: 200  },
+};
+
 // Detect which country a job location string maps to
 function detectCountry(location: string): string | null {
   const loc = (location || "").toLowerCase();
@@ -90,7 +110,41 @@ export const scrapeJobBoards = onSchedule(
         console.warn(`  ⚠️ Remotive scrape failed: ${e.message}`);
       }
 
-      // Source 2: Adzuna API (requires API key in env)
+      // Source 2: Rekrute.com RSS feed (Morocco's #1 job board, free RSS)
+      try {
+        const rekruteRes = await axios.get(
+          "https://www.rekrute.com/offres.rss?s=1&p=1&o=1",
+          { timeout: 30000, headers: { "User-Agent": "SkillQuantBot/1.0" } }
+        );
+        // Parse RSS XML manually (lightweight)
+        const xml: string = rekruteRes.data || "";
+        const itemMatches = xml.match(/<item>([\s\S]*?)<\/item>/g) || [];
+        const batch = db.batch();
+        let rekruteCount = 0;
+
+        for (const item of itemMatches) {
+          const title   = (item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/)   || item.match(/<title>(.*?)<\/title>/))?.[1]   || "";
+          const desc    = (item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/) || item.match(/<description>(.*?)<\/description>/))?.[1] || "";
+          const link    = (item.match(/<link>(.*?)<\/link>/))?.[1] || "";
+          const pubDate = (item.match(/<pubDate>(.*?)<\/pubDate>/))?.[1] || "";
+
+          const skills = extractSkills(`${title} ${desc}`);
+          if (skills.length === 0) continue;
+
+          const docRef = db.collection("rawJobPostings").doc();
+          batch.set(docRef, {
+            source: "rekrute",
+            title,
+            company: "",
+            skills,
+            salary: 0, // Rekrute rarely lists salary in RSS
+            location: "Morocco",
+            country: "Morocco",
+            url: link,
+            postedAt: pubDate ? new Date(pubDate).getTime() : now,
+            scrapedAt: now,
+          });
+          totalJobs++;
       // Set via: firebase functions:config:set adzuna.app_id="xxx" adzuna.app_key="yyy"
       // For MVP, this is optional — commented out until API key is configured
       /*
@@ -305,10 +359,9 @@ export const aggregateSkillMetrics = onSchedule(
       }
 
       // 4. Update per-country skill metrics
-      const SALARY_MULT: Record<string, number> = { Morocco: 0.25, France: 0.65, USA: 1.0 };
-
       for (const country of COUNTRIES) {
-        const mult = SALARY_MULT[country] || 1.0;
+        const salaryRange  = SALARY_BASE[country]   || { min: 80_000, max: 220_000 };
+        const rateRange    = FREELANCE_BASE[country] || { min: 40,     max: 200     };
 
         const allDemands = skills.map(s => {
           const key = `${s.name}::${country}`;
@@ -335,10 +388,43 @@ export const aggregateSkillMetrics = onSchedule(
 
           const skillSalaries = salaries[key] || [];
           const skillRates = hourlyRates[key] || [];
-          const baseSalary = skillSalaries.length > 0 ? Math.round(average(skillSalaries)) : (existingData?.avgSalary || 80000);
-          const avgSalary = Math.round(baseSalary * mult);
-          const medianSal = skillSalaries.length > 0 ? Math.round(median(skillSalaries) * mult) : Math.round(avgSalary * 0.92);
-          const freelanceRate = skillRates.length > 0 ? Math.round(average(skillRates)) : (existingData?.freelanceHourlyRate || 60);
+
+          // Use real scraped salary if available, otherwise fall back to the
+          // country-specific baseline range (already in local currency).
+          let avgSalary: number;
+          let medianSal: number;
+          if (skillSalaries.length > 0) {
+            // Scraped values come in USD (from Remotive). Convert to local currency.
+            const usdToLocal: Record<string, number> = { Morocco: 10.0, France: 0.92, USA: 1.0 };
+            const fx = usdToLocal[country] || 1.0;
+            avgSalary = Math.round(average(skillSalaries) * fx);
+            medianSal = Math.round(median(skillSalaries) * fx);
+          } else {
+            // Baseline: spread across skill demand level (higher demand → higher salary)
+            const demandFraction = demandScore / 100;
+            avgSalary = Math.round(salaryRange.min + (salaryRange.max - salaryRange.min) * (0.4 + demandFraction * 0.6));
+            medianSal = Math.round(avgSalary * 0.92);
+            // Merge with existing stored value to avoid random resets
+            if (existingData?.avgSalary && existingData.avgSalary > 0) {
+              avgSalary = Math.round(existingData.avgSalary * 0.8 + avgSalary * 0.2);
+              medianSal = Math.round(avgSalary * 0.92);
+            }
+          }
+
+          // Freelance rate: stored in local currency
+          let freelanceRate: number;
+          if (skillRates.length > 0) {
+            // Scraped from Freelancer.com in USD — convert to local
+            const usdToLocal: Record<string, number> = { Morocco: 10.0, France: 0.92, USA: 1.0 };
+            const fx = usdToLocal[country] || 1.0;
+            freelanceRate = Math.round(average(skillRates) * fx);
+          } else {
+            const demandFraction = demandScore / 100;
+            freelanceRate = Math.round(rateRange.min + (rateRange.max - rateRange.min) * (0.3 + demandFraction * 0.7));
+            if (existingData?.freelanceHourlyRate && existingData.freelanceHourlyRate > 0) {
+              freelanceRate = Math.round(existingData.freelanceHourlyRate * 0.8 + freelanceRate * 0.2);
+            }
+          }
 
           const existingTrend: any[] = existingData?.demandTrend || [];
           const existingSalaryTrend: any[] = existingData?.salaryTrend || [];

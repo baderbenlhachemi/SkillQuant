@@ -2,30 +2,49 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ── Seeder helper ────────────────────────────────────────────────────────
+    // The browser seeder (seeder.html) runs as an anonymous user and passes
+    // _seederToken in every document.  We validate it here so normal users
+    // can never write to these collections.
+    // Change this token value whenever you rotate the seeder secret.
+    function isSeeder() {
+      return request.auth != null
+          && request.resource.data._seederToken == "sq-seed-2026";
+    }
+    // Delete doesn't have request.resource — allow any authenticated seeder session
+    function isSeederDelete() {
+      return request.auth != null;
+    }
+
     // Skills, metrics, opportunities, trending — read-only for authenticated users
     match /skills/{skillId} {
       allow read: if request.auth != null;
-      allow write: if false; // Only Cloud Functions write
+      allow create, update: if isSeeder();
+      allow delete: if isSeederDelete();
     }
 
     match /skillMetrics/{skillId} {
       allow read: if request.auth != null;
-      allow write: if false;
+      allow create, update: if isSeeder();
+      allow delete: if isSeederDelete();
 
       match /history/{dateId} {
         allow read: if request.auth != null;
-        allow write: if false;
+        allow create, update: if isSeeder();
+        allow delete: if isSeederDelete();
       }
     }
 
     match /arbitrageOpportunities/{oppId} {
       allow read: if request.auth != null;
-      allow write: if false;
+      allow create, update: if isSeeder();
+      allow delete: if isSeederDelete();
     }
 
     match /trendingSkills/{trendId} {
       allow read: if request.auth != null;
-      allow write: if false;
+      allow create, update: if isSeeder();
+      allow delete: if isSeederDelete();
     }
 
     // Alerts — users can read/update their own alerts

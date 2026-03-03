@@ -100,6 +100,11 @@
 
         window.log = log;
 
+        // ── Seeder token — must match firestore.rules isSeeder() ─────────────
+        const SEEDER_TOKEN = "sq-seed-2026";
+        // Wrap any data object so every write carries the token Firestore rules check
+        function sd(data) { return { ...data, _seederToken: SEEDER_TOKEN }; }
+
         // ===== CONFIGURATION =====
         const COUNTRIES = ["Morocco", "France", "USA"];
         const SKILLS = [
@@ -436,8 +441,37 @@
             USA:     ["San Francisco", "New York", "Seattle", "Austin"],
         };
 
-        const SALARY_MULT = { Morocco: 0.25, France: 0.65, USA: 1.0 };
+        const SALARY_MULT = { Morocco: 0.25, France: 0.65, USA: 1.0 };  // kept for job listing display only
         const CURRENCIES  = { Morocco: "MAD", France: "EUR", USA: "USD" };
+
+        // Real annual salary baselines IN LOCAL CURRENCY (mid-level dev)
+        // Morocco: MAD/yr  — typical range 80k–280k MAD  (≈ $8k–$28k)
+        // France:  EUR/yr  — typical range 38k–70k EUR
+        // USA:     USD/yr  — typical range 85k–200k USD
+        const SALARY_RANGE = {
+            Morocco: { min: 80_000,  max: 280_000  },
+            France:  { min: 38_000,  max: 70_000   },
+            USA:     { min: 85_000,  max: 200_000  },
+        };
+        // Freelance hourly rates IN LOCAL CURRENCY
+        // Morocco: MAD/hr  150–600
+        // France:  EUR/hr  35–110
+        // USA:     USD/hr  45–190
+        const RATE_RANGE = {
+            Morocco: { min: 150, max: 600 },
+            France:  { min: 35,  max: 110 },
+            USA:     { min: 45,  max: 190 },
+        };
+
+        function randomSalary(country, demandFraction = 0.5) {
+            const r = SALARY_RANGE[country];
+            return Math.floor(r.min + (r.max - r.min) * (0.35 + demandFraction * 0.65));
+        }
+
+        function randomRate(country, demandFraction = 0.5) {
+            const r = RATE_RANGE[country];
+            return Math.floor(r.min + (r.max - r.min) * (0.3 + demandFraction * 0.7));
+        }
 
         // ===== GENERIC FALLBACK for skills without explicit data =====
         function getResourcesForSkill(skillId, skillName) {
@@ -505,10 +539,8 @@
             const INDEED_DOMAIN = { Morocco: "ma.indeed.com", France: "fr.indeed.com", USA: "www.indeed.com" };
             const cities = CITIES[country];
             const employers = getEmployersForSkill(skill.id, country);
-            const mult = SALARY_MULT[country];
-            const cur = CURRENCIES[country];
 
-            // 6 country-specific local jobs with LinkedIn/Indeed links
+            // 6 country-specific local jobs
             const localTemplates = [
                 { title: `Senior ${skill.name} Engineer`,       type: "Full-time" },
                 { title: `${skill.name} Developer`,             type: "Full-time" },
@@ -522,13 +554,32 @@
                 const city = cities[i % cities.length];
                 const company = employers[i % employers.length];
                 const seniorityMult = i === 0 ? 1.3 : i === 2 ? 1.35 : i === 3 ? 0.6 : 1.0;
-                const base = Math.floor((70000 + Math.random() * 90000) * mult * seniorityMult);
+                const demandFrac = 0.4 + Math.random() * 0.4;
+                const base = Math.floor(randomSalary(country, demandFrac) * seniorityMult);
                 const hi = Math.floor(base * 1.25);
-                const source = i % 2 === 0 ? "LinkedIn" : "Indeed";
-                const searchQuery = `${t.title} ${company}`;
-                const url = source === "LinkedIn"
-                    ? `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(searchQuery)}&location=${encodeURIComponent(city + ', ' + country)}&geoId=${LINKEDIN_GEO[country]}&f_TPR=r604800`
-                    : `https://${INDEED_DOMAIN[country]}/jobs?q=${encodeURIComponent(searchQuery)}&l=${encodeURIComponent(city)}&fromage=7`;
+                const cur = CURRENCIES[country];
+
+                // Morocco: alternate between Rekrute, Emploi.ma, LinkedIn, Indeed
+                let source, url;
+                if (country === "Morocco") {
+                    const encoded = encodeURIComponent(`${t.title}`);
+                    if (i % 3 === 0) {
+                        source = "Rekrute";
+                        url = `https://www.rekrute.com/offres.html?s=1&p=1&o=1&d=all&pos=${encoded}`;
+                    } else if (i % 3 === 1) {
+                        source = "Emploi.ma";
+                        url = `https://www.emploi.ma/recherche-jobs-maroc/${encoded}.html`;
+                    } else {
+                        source = "LinkedIn";
+                        url = `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(t.title)}&location=${encodeURIComponent(city + ', Maroc')}&geoId=${LINKEDIN_GEO[country]}&f_TPR=r604800`;
+                    }
+                } else {
+                    source = i % 2 === 0 ? "LinkedIn" : "Indeed";
+                    const searchQuery = `${t.title} ${company}`;
+                    url = source === "LinkedIn"
+                        ? `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(searchQuery)}&location=${encodeURIComponent(city + ', ' + country)}&geoId=${LINKEDIN_GEO[country]}&f_TPR=r604800`
+                        : `https://${INDEED_DOMAIN[country]}/jobs?q=${encodeURIComponent(searchQuery)}&l=${encodeURIComponent(city)}&fromage=7`;
+                }
 
                 return {
                     title: t.title,
@@ -573,7 +624,7 @@
             let batch = writeBatch(db);
             let count = 0;
             for (const s of SKILLS) {
-                batch.set(doc(db, 'skills', s.id), { name: s.name, category: s.category, tags: s.searchTerms || [] });
+                batch.set(doc(db, 'skills', s.id), sd({ name: s.name, category: s.category, tags: s.searchTerms || [] }));
                 count++;
                 if (count >= 450) {
                     await batch.commit();
@@ -605,17 +656,19 @@
                 for (const s of SKILLS) {
                     const demand = 45 + Math.random() * 50;
                     const supply = 15 + Math.random() * 55;
-                    const baseSalary = 80000 + Math.floor(Math.random() * 100000);
-                    const salary = Math.floor(baseSalary * mult);
+                    const demandFrac = (demand - 45) / 50;
+                    const salary = randomSalary(country, demandFrac);
+                    const rate   = randomRate(country, demandFrac);
 
                     // 90-day trend data
                     const demandTrend = [], salaryTrend = [];
-                    let dB = demand - 10, sB = salary - 5000;
+                    let dB = demand - 10, sB = salary * 0.93;
+                    const salaryStep = salary * 0.008; // ~0.8% daily drift, in local currency
                     for (let d = 89; d >= 0; d--) {
                         dB += (Math.random() - 0.45) * 2;
                         dB = Math.max(5, Math.min(98, dB));
-                        sB += (Math.random() - 0.45) * 800 * mult;
-                        sB = Math.max(10000, sB);
+                        sB += (Math.random() - 0.45) * salaryStep;
+                        sB = Math.max(SALARY_RANGE[country].min * 0.5, sB);
                         demandTrend.push({ timestamp: now - d * DAY_MS, value: Math.round(dB * 100) / 100 });
                         salaryTrend.push({ timestamp: now - d * DAY_MS, value: Math.round(sB) });
                     }
@@ -625,14 +678,14 @@
                     realJobCount += jobListings.filter(j => j.source === 'Remotive').length;
 
                     const docId = `${s.id}_${country.toLowerCase()}`;
-                    batch.set(doc(db, 'skillMetrics', docId), {
+                    batch.set(doc(db, 'skillMetrics', docId), sd({
                         skillId: s.id, skillName: s.name, category: s.category, location: country,
                         demandScore: Math.round(demand * 10) / 10,
                         supplyScore: Math.round(supply * 10) / 10,
                         arbitrageScore: Math.round((demand * 0.6 + (100 - supply) * 0.3) * 10) / 10,
                         avgSalary: salary,
                         medianSalary: Math.floor(salary * 0.92),
-                        freelanceHourlyRate: Math.floor((80000 + Math.random() * 100000) / 1800),
+                        freelanceHourlyRate: rate,
                         jobPostCount: 50 + Math.floor(Math.random() * 500),
                         freelanceGigCount: 10 + Math.floor(Math.random() * 150),
                         demandTrend, salaryTrend,
@@ -640,7 +693,7 @@
                         jobListings,
                         learningResources: getResourcesForSkill(s.id, s.name),
                         updatedAt: now,
-                    });
+                    }));
                     total++;
                     batchCount++;
                     if (batchCount >= 400) {
@@ -661,15 +714,15 @@
             const now = Date.now();
             let total = 0;
             for (const country of COUNTRIES) {
-                const mult = SALARY_MULT[country];
                 for (const idx of ARB_SKILL_INDICES) {
                     const s = SKILLS[idx];
                     const demand = 70 + Math.random() * 25;
                     const supply = 15 + Math.random() * 35;
                     const arb = demand * 0.6 + (100 - supply) * 0.3 + Math.random() * 5;
-                    const salary = Math.floor((80000 + Math.random() * 100000) * mult);
+                    const demandFrac = (demand - 70) / 25;
+                    const salary = randomSalary(country, demandFrac);
                     const change = 5 + Math.round(Math.random() * 200) / 10;
-                    batch.set(doc(collection(db, 'arbitrageOpportunities')), {
+                    batch.set(doc(collection(db, 'arbitrageOpportunities')), sd({
                         skillId: s.id, skillName: s.name, location: country,
                         arbitrageScore: Math.round(arb * 10) / 10,
                         demandScore: Math.round(demand * 10) / 10,
@@ -678,7 +731,7 @@
                         changePercent: change, direction: "up",
                         summary: `${s.name} engineers in ${country} earn ${(1.3 + Math.random()).toFixed(1)}x more this quarter.`,
                         updatedAt: now,
-                    });
+                    }));
                     total++;
                 }
             }
@@ -695,12 +748,12 @@
                 for (const idx of TREND_SKILL_INDICES) {
                     const s = SKILLS[idx];
                     const change = 5 + Math.round(Math.random() * 250) / 10;
-                    batch.set(doc(collection(db, 'trendingSkills')), {
+                    batch.set(doc(collection(db, 'trendingSkills')), sd({
                         skillId: s.id, skillName: s.name, location: country,
                         trendDirection: Math.random() > 0.15 ? "up" : "down",
                         changePercent: change, period: "7d",
                         updatedAt: now,
-                    });
+                    }));
                     total++;
                 }
             }
