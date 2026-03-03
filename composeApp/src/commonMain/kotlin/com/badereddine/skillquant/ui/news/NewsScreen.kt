@@ -35,24 +35,38 @@ class NewsScreen : Screen {
                 TopAppBar(
                     title = { Text("📰 Market News", fontWeight = FontWeight.Bold) },
                     navigationIcon = {
-                        IconButton(onClick = { navigator.pop() }) { Text("←", style = MaterialTheme.typography.titleLarge) }
+                        IconButton(onClick = { navigator.pop() }) {
+                            Text("←", style = MaterialTheme.typography.titleLarge)
+                        }
                     },
                     actions = {
                         TextButton(onClick = { viewModel.refresh() }) { Text("Refresh") }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    )
                 )
             }
         ) { padding ->
             when {
-                state.isLoading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                state.isLoading -> Box(
+                    Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center
+                ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator()
                         Spacer(Modifier.height(8.dp))
-                        Text("Fetching stories from Hacker News…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Fetching stories from HN, Dev.to, Reddit, Lobsters & GitHub…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
-                state.error != null -> Box(Modifier.fillMaxSize().padding(padding).padding(32.dp), contentAlignment = Alignment.Center) {
+                state.error != null -> Box(
+                    Modifier.fillMaxSize().padding(padding).padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("⚠️", style = MaterialTheme.typography.displayMedium)
                         Spacer(Modifier.height(8.dp))
@@ -60,79 +74,49 @@ class NewsScreen : Screen {
                         Button(onClick = { viewModel.refresh() }) { Text("Retry") }
                     }
                 }
-                state.news.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    Text("No news found for your skills", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                state.allNews.isEmpty() -> Box(
+                    Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "No news found for your skills",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(padding),
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    item {
-                        Text(
-                            "Recent stories from Hacker News & Dev.to matching your watchlist",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    items(state.news) { item ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth().clickable {
+                    // ── For You section ───────────────────────────────────────
+                    if (state.watchlistNews.isNotEmpty()) {
+                        item {
+                            SectionHeader(
+                                emoji = "🎯",
+                                title = "For You",
+                                subtitle = "Based on your watchlist — ${state.watchlistNews.size} stories"
+                            )
+                        }
+                        items(state.watchlistNews) { item ->
+                            NewsCard(item) {
                                 if (item.url.isNotBlank()) runCatching { uriHandler.openUri(item.url) }
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                        ) {
-                            Column(Modifier.padding(12.dp)) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(
-                                        item.title,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                Spacer(Modifier.height(4.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    if (item.points > 0) {
-                                        Text("▲ ${item.points}", style = MaterialTheme.typography.labelSmall, color = GoldAccent)
-                                    }
-                                    if (item.createdAt.isNotBlank()) {
-                                        Text(formatRelativeDate(item.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                    if (item.author.isNotBlank()) {
-                                        Text("by ${item.author}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = TealPrimary.copy(alpha = 0.15f)
-                                    ) {
-                                        Text(
-                                            item.matchedSkill,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = TealPrimary
-                                        )
-                                    }
-                                    // Source badge
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = if (item.source == "Dev.to")
-                                            NeutralBlue.copy(alpha = 0.15f)
-                                        else MaterialTheme.colorScheme.surfaceVariant
-                                    ) {
-                                        Text(
-                                            item.source,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = if (item.source == "Dev.to") NeutralBlue
-                                            else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
+                            }
+                        }
+                    }
+
+                    // ── General section ───────────────────────────────────────
+                    if (state.generalNews.isNotEmpty()) {
+                        item {
+                            Spacer(Modifier.height(if (state.watchlistNews.isNotEmpty()) 8.dp else 0.dp))
+                            SectionHeader(
+                                emoji = "🌐",
+                                title = if (state.watchlistNews.isEmpty()) "Top Stories" else "More Stories",
+                                subtitle = "Hacker News · Dev.to · Reddit · Lobsters · GitHub"
+                            )
+                        }
+                        items(state.generalNews) { item ->
+                            NewsCard(item) {
+                                if (item.url.isNotBlank()) runCatching { uriHandler.openUri(item.url) }
                             }
                         }
                     }
@@ -142,25 +126,120 @@ class NewsScreen : Screen {
     }
 }
 
+@Composable
+private fun SectionHeader(emoji: String, title: String, subtitle: String) {
+    Column(Modifier.padding(vertical = 4.dp)) {
+        Text(
+            "$emoji $title",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+@Composable
+private fun NewsCard(item: NewsItem, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                item.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (item.points > 0) {
+                    Text("▲ ${item.points}", style = MaterialTheme.typography.labelSmall, color = GoldAccent)
+                }
+                if (item.createdAt.isNotBlank()) {
+                    Text(
+                        formatRelativeDate(item.createdAt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (item.author.isNotBlank()) {
+                    Text(
+                        "by ${item.author}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Skill tag
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = TealPrimary.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        item.matchedSkill,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TealPrimary
+                    )
+                }
+                // Source badge
+                val (sourceBg, sourceFg) = sourceBadgeColors(item.source)
+                Surface(shape = RoundedCornerShape(4.dp), color = sourceBg) {
+                    Text(
+                        item.source,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = sourceFg
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun sourceBadgeColors(source: String): Pair<androidx.compose.ui.graphics.Color, androidx.compose.ui.graphics.Color> {
+    return when {
+        source == "Hacker News"     -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+        source == "Dev.to"          -> NeutralBlue.copy(alpha = 0.15f) to NeutralBlue
+        source.startsWith("Reddit") -> PositiveGreen.copy(alpha = 0.15f) to PositiveGreen
+        source == "Lobsters"        -> NegativeRed.copy(alpha = 0.15f) to NegativeRed
+        source == "GitHub Trending" -> GoldAccent.copy(alpha = 0.15f) to GoldAccent
+        else                        -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+}
+
 private fun formatRelativeDate(isoDate: String): String {
     return try {
-        // Parse ISO 8601 like "2026-02-25T10:30:00.000Z"
         val dateStr = isoDate.substringBefore("T")
         val parts = dateStr.split("-")
         if (parts.size != 3) return ""
         val year = parts[0].toInt()
         val month = parts[1].toInt()
         val day = parts[2].toInt()
-        // Rough days-since calculation
         val nowMs = System.currentTimeMillis()
         val approxArticleMs = run {
-            val daysInYear = 365L
-            val daysFromYear = (year - 1970L) * daysInYear
+            val daysFromYear = (year - 1970L) * 365L
             val daysFromMonth = (month - 1) * 30L
             (daysFromYear + daysFromMonth + day) * 24 * 60 * 60 * 1000
         }
-        val diffMs = nowMs - approxArticleMs
-        val diffDays = (diffMs / (24 * 60 * 60 * 1000)).toInt()
+        val diffDays = ((nowMs - approxArticleMs) / (24 * 60 * 60 * 1000)).toInt()
         when {
             diffDays <= 0 -> "today"
             diffDays == 1 -> "1d ago"
