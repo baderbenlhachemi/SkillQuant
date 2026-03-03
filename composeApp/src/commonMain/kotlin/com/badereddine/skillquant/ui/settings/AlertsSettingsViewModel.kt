@@ -10,6 +10,7 @@ import com.badereddine.skillquant.domain.repository.SkillRepository
 import com.badereddine.skillquant.domain.repository.UserRepository
 import com.badereddine.skillquant.util.Constants
 import com.badereddine.skillquant.util.ThemeManager
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -43,6 +44,10 @@ class AlertsSettingsViewModel(
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
+    // Track listener jobs so we can cancel + restart them on auth change
+    private var profileJob: Job? = null
+    private var alertsJob: Job? = null
+
     init {
         _uiState.update {
             it.copy(
@@ -59,36 +64,46 @@ class AlertsSettingsViewModel(
                 val userId = userRepository.getCurrentUserId()
                     ?: userRepository.signInAnonymously()
 
-                launch {
-                    userRepository.getUserProfile(userId).collect { profile ->
-                        _uiState.update {
-                            it.copy(
-                                userProfile = profile,
-                                isLoading = false,
-                                isAnonymous = userRepository.isAnonymous()
-                            )
-                        }
-                        // Resolve skill names for watchlist
-                        profile?.watchlist?.forEach { skillId ->
-                            if (skillId !in _uiState.value.skillNames) {
-                                launch {
-                                    val name = skillRepository.getSkillName(skillId)
-                                    _uiState.update {
-                                        it.copy(skillNames = it.skillNames + (skillId to name))
-                                    }
-                                }
+                startListeners(userId)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false) }
+            }
+        }
+    }
+
+    /** Cancel existing Firestore listeners then re-subscribe for [userId]. */
+    private fun startListeners(userId: String) {
+        // Cancel stale listeners before creating new ones — prevents double-subscriptions
+        // and the coroutine-scope crash that looks like an app close on Samsung devices.
+        profileJob?.cancel()
+        alertsJob?.cancel()
+
+        profileJob = screenModelScope.launch {
+            userRepository.getUserProfile(userId).collect { profile ->
+                _uiState.update {
+                    it.copy(
+                        userProfile = profile,
+                        isLoading = false,
+                        isAnonymous = userRepository.isAnonymous()
+                    )
+                }
+                // Resolve skill names for watchlist
+                profile?.watchlist?.forEach { skillId ->
+                    if (skillId !in _uiState.value.skillNames) {
+                        launch {
+                            val name = skillRepository.getSkillName(skillId)
+                            _uiState.update {
+                                it.copy(skillNames = it.skillNames + (skillId to name))
                             }
                         }
                     }
                 }
+            }
+        }
 
-                launch {
-                    alertRepository.getAlerts(userId).collect { alerts ->
-                        _uiState.update { it.copy(alerts = alerts) }
-                    }
-                }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false) }
+        alertsJob = screenModelScope.launch {
+            alertRepository.getAlerts(userId).collect { alerts ->
+                _uiState.update { it.copy(alerts = alerts) }
             }
         }
     }
@@ -103,14 +118,14 @@ class AlertsSettingsViewModel(
                     return@launch
                 }
 
-                // If currently anonymous, try to link (preserves data)
-                // If already signed in, just sign in with the new account
-                if (userRepository.isAnonymous()) {
+                // Link or sign in, get the resulting user ID
+                val newUserId = if (userRepository.isAnonymous()) {
                     userRepository.linkGoogleAccount(idToken)
                 } else {
                     userRepository.signInWithGoogle(idToken)
                 }
 
+                // Update state first so the UI reflects the new account immediately
                 _uiState.update {
                     it.copy(
                         isSigningIn = false,
@@ -118,8 +133,10 @@ class AlertsSettingsViewModel(
                         authMessage = "✅ Signed in successfully!"
                     )
                 }
-                // Reload settings with the (possibly new) user
-                loadSettings()
+
+                // Restart listeners for the (possibly new) user ID without re-entering loadSettings
+                startListeners(newUserId)
+
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -134,15 +151,25 @@ class AlertsSettingsViewModel(
     fun signOut() {
         screenModelScope.launch {
             try {
+                // signOut() internally signs in anonymously, so getCurrentUserId() is
+                // always non-null immediately after — no second signInAnonymously() needed.
                 userRepository.signOut()
+                val newUserId = userRepository.getCurrentUserId()
+                    ?: return@launch // should never happen
+
                 _uiState.update {
                     it.copy(
                         isAnonymous = true,
                         authMessage = "Signed out",
-                        userProfile = null
+                        userProfile = null,
+                        skillNames = emptyMap(),
+                        alerts = emptyList()
                     )
                 }
-                loadSettings()
+
+                // Restart listeners for the new anonymous user
+                startListeners(newUserId)
+
             } catch (e: Exception) {
                 _uiState.update { it.copy(authMessage = "Sign-out failed: ${e.message}") }
             }
