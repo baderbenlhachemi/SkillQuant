@@ -5,30 +5,36 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.badereddine.skillquant.App
-import com.badereddine.skillquant.di.appModule
-import com.badereddine.skillquant.di.platformModule
-import org.koin.android.ext.koin.androidContext
-import org.koin.android.ext.koin.androidLogger
-import org.koin.core.context.GlobalContext
-import org.koin.core.context.startKoin
-import org.koin.core.logger.Level
+import com.badereddine.skillquant.auth.GoogleAuthHelper
+import org.koin.android.ext.android.inject
 
 class MainActivity : ComponentActivity() {
+
+    // Inject GoogleAuthHelper so we can wire the Activity reference into it.
+    // Koin is already started by SkillQuantApp before this runs.
+    private val googleAuthHelper: GoogleAuthHelper by inject()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Start Koin only once (guard against re-creation)
-        if (GlobalContext.getOrNull() == null) {
-            startKoin {
-                androidLogger(Level.ERROR)
-                androidContext(applicationContext)
-                modules(appModule, platformModule)
-            }
-        }
+        // Wire Activity context — CredentialManager requires an Activity on real devices
+        googleAuthHelper.activityContext = this
 
         setContent {
             App()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-wire after returning from background / other activities
+        googleAuthHelper.activityContext = this
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Avoid leaking the Activity reference
+        googleAuthHelper.activityContext = null
     }
 }

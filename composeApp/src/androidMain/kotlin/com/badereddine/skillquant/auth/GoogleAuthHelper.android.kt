@@ -34,9 +34,17 @@ actual class GoogleAuthHelper(private val context: Context) {
     }
 
     suspend fun getGoogleIdTokenResult(): GoogleSignInResult {
-        val ctx = activityContext ?: context
+        // CredentialManager MUST receive an Activity — applicationContext causes
+        // "failed to launch the selector UI" on real devices (Samsung, etc.)
+        val activity = activityContext
+            ?: return GoogleSignInResult.Error(
+                "Sign-in failed: no Activity context available.\n" +
+                "Please try again from the main screen."
+            )
+
         return try {
-            val credentialManager = CredentialManager.create(ctx)
+            // Create CredentialManager with the Activity context
+            val credentialManager = CredentialManager.create(activity)
 
             val googleIdOption = GetGoogleIdOption.Builder()
                 .setFilterByAuthorizedAccounts(false)
@@ -48,17 +56,17 @@ actual class GoogleAuthHelper(private val context: Context) {
                 .addCredentialOption(googleIdOption)
                 .build()
 
-            val result = credentialManager.getCredential(ctx, request)
-            val credential = result.credential
-
-            val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+            // Pass the Activity as context — this is the critical call
+            val result = credentialManager.getCredential(activity, request)
+            val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(result.credential.data)
             GoogleSignInResult.Success(googleIdTokenCredential.idToken)
+
         } catch (_: GetCredentialCancellationException) {
             GoogleSignInResult.Cancelled
         } catch (_: NoCredentialException) {
             GoogleSignInResult.Error(
                 "No Google account found on this device.\n\n" +
-                "Please add a Google account in your device Settings → Accounts, then try again."
+                "Please add a Google account in Settings → Accounts, then try again."
             )
         } catch (e: Exception) {
             val msg = e.message ?: e.toString()
@@ -83,4 +91,3 @@ actual class GoogleAuthHelper(private val context: Context) {
 }
 
 actual val isGoogleSignInAvailable: Boolean = true
-
