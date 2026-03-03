@@ -95,17 +95,19 @@ class FirestoreSkillRepository(
     }
 
     override fun getSkillMetrics(skillId: String, location: String): Flow<SkillMetrics?> {
+        // Doc ID is always "{skillId}_{location.lowercase()}" — use a direct fetch
+        // instead of a compound query (which requires a composite index and can
+        // return the wrong document if the index hasn't been created yet).
+        val docId = "${skillId}_${location.lowercase()}"
         return firestore
             .collection(Constants.COLLECTION_SKILL_METRICS)
-            .where { "skillId" equalTo skillId }
-            .where { "location" equalTo location }
-            .limit(1)
+            .document(docId)
             .snapshots
-            .map { snapshot ->
-                val doc = snapshot.documents.firstOrNull() ?: return@map null
+            .map { doc ->
+                if (!doc.exists) return@map null
                 runCatching {
                     SkillMetrics(
-                        skillId = doc.getString("skillId").ifEmpty { doc.id },
+                        skillId = doc.getString("skillId").ifEmpty { skillId },
                         skillName = doc.getString("skillName"),
                         category = doc.getString("category"),
                         demandScore = doc.getDouble("demandScore"),
@@ -121,7 +123,7 @@ class FirestoreSkillRepository(
                         topEmployers = doc.getStringList("topEmployers"),
                         learningResources = doc.getLearningResources(),
                         jobListings = doc.getJobListings(),
-                        location = doc.getString("location"),
+                        location = doc.getString("location").ifEmpty { location },
                         updatedAt = doc.getLong("updatedAt")
                     )
                 }.getOrNull()
@@ -155,16 +157,14 @@ class FirestoreSkillRepository(
 
     override suspend fun getSkillName(skillId: String): String {
         return runCatching {
+            // Use Morocco doc as canonical name source — same name across all countries
             firestore
                 .collection(Constants.COLLECTION_SKILL_METRICS)
-                .where { "skillId" equalTo skillId }
-                .limit(1)
+                .document("${skillId}_morocco")
                 .snapshots
                 .first()
-                .documents
-                .firstOrNull()
-                ?.let { doc -> doc.getString("skillName") }
-                ?: skillId
+                .getString("skillName")
+                .ifEmpty { skillId }
         }.getOrElse { skillId }
     }
 
@@ -209,37 +209,12 @@ class FirestoreSkillRepository(
 
     override fun getSkillMetricsList(skillIds: List<String>, location: String): Flow<List<SkillMetrics>> {
         if (skillIds.isEmpty()) return kotlinx.coroutines.flow.flowOf(emptyList())
-        return firestore
-            .collection(Constants.COLLECTION_SKILL_METRICS)
-            .where { "location" equalTo location }
-            .snapshots
-            .map { snapshot ->
-                snapshot.documents.mapNotNull { doc ->
-                    val skillId = doc.getString("skillId").ifEmpty { doc.id }
-                    if (skillId !in skillIds) return@mapNotNull null
-                    runCatching {
-                        SkillMetrics(
-                            skillId = skillId,
-                            skillName = doc.getString("skillName"),
-                            category = doc.getString("category"),
-                            demandScore = doc.getDouble("demandScore"),
-                            supplyScore = doc.getDouble("supplyScore"),
-                            arbitrageScore = doc.getDouble("arbitrageScore"),
-                            avgSalary = doc.getLong("avgSalary"),
-                            medianSalary = doc.getLong("medianSalary"),
-                            freelanceHourlyRate = doc.getDouble("freelanceHourlyRate"),
-                            jobPostCount = doc.getLong("jobPostCount").toInt(),
-                            freelanceGigCount = doc.getLong("freelanceGigCount").toInt(),
-                            demandTrend = doc.getTrendPoints("demandTrend"),
-                            salaryTrend = doc.getTrendPoints("salaryTrend"),
-                            topEmployers = doc.getStringList("topEmployers"),
-                            learningResources = doc.getLearningResources(),
-                            jobListings = doc.getJobListings(),
-                            location = doc.getString("location"),
-                            updatedAt = doc.getLong("updatedAt")
-                        )
-                    }.getOrNull()
-                }
-            }
+        // Fetch each doc directly by its known ID — no collection scan, no index needed
+        val flows = skillIds.map { skillId ->
+            getSkillMetrics(skillId, location)
+        }
+        return kotlinx.coroutines.flow.combine(flows) { array ->
+            array.filterNotNull()
+        }
     }
 }

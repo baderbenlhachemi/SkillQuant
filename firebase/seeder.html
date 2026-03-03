@@ -71,7 +71,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-        import { getFirestore, collection, doc, setDoc, writeBatch, getDocs, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+        import { getFirestore, collection, doc, getDoc, setDoc, writeBatch, getDocs, deleteDoc, query, where } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
         import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
 
         // Firebase configuration (from your google-services.json)
@@ -709,34 +709,55 @@
         }
 
         async function seedArbitrageOpportunities() {
-            log('🎯 Seeding arbitrage opportunities (per country)...');
-            const batch = writeBatch(db);
+            log('🎯 Seeding arbitrage opportunities from skillMetrics (consistent data)...');
             const now = Date.now();
             let total = 0;
+
+            // For each country, query all skillMetrics docs, sort by arbitrageScore desc,
+            // take top 15, and write to arbitrageOpportunities using the EXACT same
+            // demand/supply/arb/salary values — so the home page and detail page always match.
             for (const country of COUNTRIES) {
-                for (const idx of ARB_SKILL_INDICES) {
-                    const s = SKILLS[idx];
-                    const demand = 70 + Math.random() * 25;
-                    const supply = 15 + Math.random() * 35;
-                    const arb = demand * 0.6 + (100 - supply) * 0.3 + Math.random() * 5;
-                    const demandFrac = (demand - 70) / 25;
-                    const salary = randomSalary(country, demandFrac);
-                    const change = 5 + Math.round(Math.random() * 200) / 10;
-                    batch.set(doc(collection(db, 'arbitrageOpportunities')), sd({
-                        skillId: s.id, skillName: s.name, location: country,
-                        arbitrageScore: Math.round(arb * 10) / 10,
-                        demandScore: Math.round(demand * 10) / 10,
-                        supplyScore: Math.round(supply * 10) / 10,
-                        avgSalary: salary,
-                        changePercent: change, direction: "up",
-                        summary: `${s.name} engineers in ${country} earn ${(1.3 + Math.random()).toFixed(1)}x more this quarter.`,
-                        updatedAt: now,
-                    }));
-                    total++;
+                try {
+                    // Single query per country — fast, uses the already-imported query/where
+                    const metricsSnap = await getDocs(
+                        query(
+                            collection(db, 'skillMetrics'),
+                            where('location', '==', country)
+                        )
+                    );
+
+                    const docs = metricsSnap.docs.map(d => ({ docId: d.id, ...d.data() }));
+
+                    // Sort descending by arbitrageScore and take top 15
+                    docs.sort((a, b) => (b.arbitrageScore || 0) - (a.arbitrageScore || 0));
+                    const top15 = docs.slice(0, 15);
+
+                    const batch = writeBatch(db);
+                    for (const m of top15) {
+                        const change = 5 + Math.round(Math.random() * 200) / 10;
+                        batch.set(doc(collection(db, 'arbitrageOpportunities')), sd({
+                            skillId: m.skillId,
+                            skillName: m.skillName,
+                            location: country,
+                            // Copy EXACT values from skillMetrics — no new random numbers
+                            arbitrageScore: m.arbitrageScore,
+                            demandScore: m.demandScore,
+                            supplyScore: m.supplyScore,
+                            avgSalary: m.avgSalary,
+                            changePercent: change,
+                            direction: "up",
+                            summary: `${m.skillName} engineers in ${country} earn ${(1.3 + Math.random()).toFixed(1)}x more this quarter.`,
+                            updatedAt: now,
+                        }));
+                        total++;
+                    }
+                    await batch.commit();
+                    log(`  ✅ ${country}: top ${top15.length} opportunities seeded`, 'success');
+                } catch (e) {
+                    log(`  ⚠️ ${country} arbitrage seeding failed: ${e.message}`, 'warning');
                 }
             }
-            await batch.commit();
-            log(`✅ Seeded ${total} arbitrage opportunities`, 'success');
+            log(`✅ Seeded ${total} arbitrage opportunities (values match skillMetrics)`, 'success');
         }
 
         async function seedTrendingSkills() {
