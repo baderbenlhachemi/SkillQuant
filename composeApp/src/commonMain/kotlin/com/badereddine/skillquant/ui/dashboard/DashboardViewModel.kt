@@ -11,11 +11,12 @@ import com.badereddine.skillquant.domain.repository.SkillRepository
 import com.badereddine.skillquant.domain.repository.UserRepository
 import com.badereddine.skillquant.util.Constants
 import com.badereddine.skillquant.util.ThemeManager
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 
 data class DashboardUiState(
     val arbitrageOpportunities: List<ArbitrageOpportunity> = emptyList(),
@@ -45,22 +46,27 @@ class DashboardViewModel(
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 
+    // SupervisorJob so a dying Firestore listener (PERMISSION_DENIED after auth change)
+    // never kills sibling coroutines or the whole screen.
+    private val supervisedScope = screenModelScope + SupervisorJob()
+
     private var searchJob: Job? = null
     private var dataJob: Job? = null
 
-    private fun isNetworkError(e: Exception): Boolean {
+    private fun isNetworkError(e: Throwable): Boolean {
         val msg = (e.message ?: "").lowercase()
-        return msg.contains("unavailable") ||
-                msg.contains("network") ||
-                msg.contains("connect") ||
-                msg.contains("unreachable") ||
-                msg.contains("timeout") ||
-                msg.contains("failed to get") ||
-                msg.contains("internet") ||
-                msg.contains("offline") ||
-                msg.contains("grpc") ||
-                msg.contains("channel") ||
-                msg.contains("dns")
+        return msg.contains("unavailable") || msg.contains("network") ||
+                msg.contains("connect") || msg.contains("unreachable") ||
+                msg.contains("timeout") || msg.contains("failed to get") ||
+                msg.contains("internet") || msg.contains("offline") ||
+                msg.contains("grpc") || msg.contains("channel") || msg.contains("dns")
+    }
+
+    private fun isPermissionError(e: Throwable): Boolean {
+        val msg = (e.message ?: "").lowercase()
+        return msg.contains("permission_denied") ||
+               msg.contains("missing or insufficient") ||
+               msg.contains("permission denied")
     }
 
     init {
@@ -75,15 +81,15 @@ class DashboardViewModel(
             return
         }
         _uiState.update { it.copy(isSearching = true) }
-        searchJob = screenModelScope.launch {
+        searchJob = supervisedScope.launch {
             delay(300)
             try {
                 val location = _uiState.value.selectedLocation
-                skillRepository.searchSkills(query, location).collect { results ->
-                    _uiState.update { it.copy(searchResults = results, isSearching = false) }
-                }
-            } catch (e: CancellationException) {
-                throw e
+                skillRepository.searchSkills(query, location)
+                    .catch { _uiState.update { s -> s.copy(isSearching = false) } }
+                    .collect { results ->
+                        _uiState.update { it.copy(searchResults = results, isSearching = false) }
+                    }
             } catch (_: Exception) {
                 _uiState.update { it.copy(isSearching = false) }
             }
@@ -107,88 +113,66 @@ class DashboardViewModel(
     }
 
     private fun loadDashboard() {
-        screenModelScope.launch {
-            // ── Step 1: ensure we have an authenticated session FIRST ──────────
-            // Running loadData() before auth completes causes a permission_denied
-            // flash on first launch because Firestore rejects unauthenticated reads.
+        supervisedScope.launch {
             try {
                 if (userRepository.getCurrentUserId() == null) {
                     userRepository.signInAnonymously()
                 }
-            } catch (_: Exception) {
-                // If anonymous sign-in fails (offline), proceed anyway —
-                // loadData will show the offline/error state instead.
-            }
-
-            // ── Step 2: now safe to start data + profile listeners in parallel ─
+            } catch (_: Exception) { }
             val location = _uiState.value.selectedLocation
             loadData(location)
             loadAuth()
         }
     }
 
-    private fun isPermissionError(e: Exception): Boolean {
-        val msg = (e.message ?: "").lowercase()
-        return msg.contains("permission_denied") ||
-               msg.contains("missing or insufficient") ||
-               msg.contains("permission denied")
-    }
-
     private fun loadData(location: String) {
-        dataJob = screenModelScope.launch {
+        dataJob = supervisedScope.launch {
+            // Arbitrage opportunities
             launch {
-                try {
-                    skillRepository.getTopArbitrageOpportunities(10, location)
-                        .collect { opportunities ->
+                skillRepository.getTopArbitrageOpportunities(10, location)
+                    .catch { e ->
+                        // Swallow permission/auth errors inline — never show them to the user
+                        if (!isPermissionError(e)) {
                             _uiState.update {
-                                it.copy(arbitrageOpportunities = opportunities, isLoading = false, isRefreshing = false)
+                                it.copy(
+                                    isLoading = false, isRefreshing = false,
+                                    isOffline = isNetworkError(e), error = e.message
+                                )
                             }
-                        }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // Suppress permission errors — they are a transient auth-startup
-                    // race and should never be shown to the user.
-                    if (isPermissionError(e)) {
-                        _uiState.update { it.copy(isLoading = false, isRefreshing = false) }
-                    } else {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                isRefreshing = false,
-                                isOffline = isNetworkError(e),
-                                error = e.message
-                            )
+                        } else {
+                            _uiState.update { it.copy(isLoading = false, isRefreshing = false) }
                         }
                     }
-                }
+                    .collect { opportunities ->
+                        _uiState.update {
+                            it.copy(arbitrageOpportunities = opportunities, isLoading = false, isRefreshing = false)
+                        }
+                    }
             }
-
+            // Trending skills
             launch {
-                try {
-                    skillRepository.getTrendingSkills(10, location).collect { trending ->
+                skillRepository.getTrendingSkills(10, location)
+                    .catch { /* non-fatal */ }
+                    .collect { trending ->
                         val arbIds = _uiState.value.arbitrageOpportunities.map { it.skillId }.toSet()
                         _uiState.update {
                             it.copy(trendingSkills = trending.filter { t -> t.skillId !in arbIds })
                         }
                     }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) { /* non-fatal */ }
             }
         }
     }
 
     private fun loadAuth() {
-        screenModelScope.launch {
+        supervisedScope.launch {
             try {
-                // Auth is already guaranteed by loadDashboard() — just get the current ID
                 val userId = userRepository.getCurrentUserId()
                     ?: userRepository.signInAnonymously()
 
                 launch {
-                    try {
-                        userRepository.getUserProfile(userId).collect { profile ->
+                    userRepository.getUserProfile(userId)
+                        .catch { /* auth changed — no-op */ }
+                        .collect { profile ->
                             _uiState.update {
                                 it.copy(
                                     userTier = profile?.tier ?: Constants.TIER_FREE,
@@ -197,12 +181,12 @@ class DashboardViewModel(
                             }
                             profile?.darkThemeOverride?.let { themeManager.setThemeMode(it) }
                         }
-                    } catch (_: Exception) {}
                 }
 
                 launch {
-                    try {
-                        alertRepository.getAlerts(userId).collect { alerts ->
+                    alertRepository.getAlerts(userId)
+                        .catch { /* auth changed — no-op */ }
+                        .collect { alerts ->
                             _uiState.update {
                                 it.copy(
                                     recentAlerts = alerts.take(3),
@@ -210,11 +194,8 @@ class DashboardViewModel(
                                 )
                             }
                         }
-                    } catch (_: Exception) {}
                 }
 
-                // If loadData() fired before auth was ready and got no results,
-                // retry now that we are definitely authenticated.
                 if (_uiState.value.arbitrageOpportunities.isEmpty() && !_uiState.value.isLoading) {
                     dataJob?.cancel()
                     loadData(_uiState.value.selectedLocation)

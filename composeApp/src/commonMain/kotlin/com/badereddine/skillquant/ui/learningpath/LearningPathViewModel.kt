@@ -5,8 +5,10 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import com.badereddine.skillquant.domain.model.SkillMetrics
 import com.badereddine.skillquant.domain.repository.SkillRepository
 import com.badereddine.skillquant.domain.repository.UserRepository
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 
 data class LearningPathUiState(
     val pathItems: List<SkillMetrics> = emptyList(),
@@ -23,23 +25,28 @@ class LearningPathViewModel(
     private val _uiState = MutableStateFlow(LearningPathUiState())
     val uiState: StateFlow<LearningPathUiState> = _uiState.asStateFlow()
 
+    private val supervisedScope = screenModelScope + SupervisorJob()
+
     init {
-        screenModelScope.launch {
+        supervisedScope.launch {
             val userId = userRepository.getCurrentUserId() ?: run {
                 _uiState.update { it.copy(isLoading = false, isEmpty = true) }; return@launch
             }
-            userRepository.getUserProfile(userId).collect { profile ->
-                val watchlist = profile?.watchlist ?: emptyList()
-                if (watchlist.isEmpty()) {
-                    _uiState.update { it.copy(isLoading = false, isEmpty = true) }
-                    return@collect
+            userRepository.getUserProfile(userId)
+                .catch { _uiState.update { it.copy(isLoading = false, isEmpty = true) } }
+                .collect { profile ->
+                    val watchlist = profile?.watchlist ?: emptyList()
+                    if (watchlist.isEmpty()) {
+                        _uiState.update { it.copy(isLoading = false, isEmpty = true) }
+                        return@collect
+                    }
+                    skillRepository.getSkillMetricsList(watchlist, location)
+                        .catch { _uiState.update { it.copy(isLoading = false) } }
+                        .collect { metrics ->
+                            val sorted = metrics.sortedByDescending { it.arbitrageScore }
+                            _uiState.update { it.copy(pathItems = sorted, isLoading = false, isEmpty = sorted.isEmpty()) }
+                        }
                 }
-                skillRepository.getSkillMetricsList(watchlist, location).collect { metrics ->
-                    val sorted = metrics.sortedByDescending { it.arbitrageScore }
-                    _uiState.update { it.copy(pathItems = sorted, isLoading = false, isEmpty = sorted.isEmpty()) }
-                }
-            }
         }
     }
 }
-

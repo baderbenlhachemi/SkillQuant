@@ -6,8 +6,10 @@ import com.badereddine.skillquant.domain.model.SkillMetrics
 import com.badereddine.skillquant.domain.repository.SkillRepository
 import com.badereddine.skillquant.domain.repository.UserRepository
 import com.badereddine.skillquant.util.Constants
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 
 data class SkillDetailUiState(
     val metrics: SkillMetrics? = null,
@@ -32,22 +34,21 @@ class SkillDetailViewModel(
     private val _uiState = MutableStateFlow(SkillDetailUiState())
     val uiState: StateFlow<SkillDetailUiState> = _uiState.asStateFlow()
 
+    private val supervisedScope = screenModelScope + SupervisorJob()
+
     init {
         loadSkillDetail()
     }
 
     private fun loadSkillDetail() {
-        screenModelScope.launch {
-
+        supervisedScope.launch {
             // Load skill metrics immediately — no auth needed
             launch {
-                try {
-                    skillRepository.getSkillMetrics(skillId, location).collect { metrics ->
+                skillRepository.getSkillMetrics(skillId, location)
+                    .catch { e -> _uiState.update { it.copy(isLoading = false, error = e.message) } }
+                    .collect { metrics ->
                         _uiState.update { it.copy(metrics = metrics, isLoading = false) }
                     }
-                } catch (e: Exception) {
-                    _uiState.update { it.copy(isLoading = false, error = e.message) }
-                }
             }
 
             // Auth + watchlist — fails gracefully
@@ -56,17 +57,19 @@ class SkillDetailViewModel(
                     val userId = userRepository.getCurrentUserId()
                         ?: userRepository.signInAnonymously()
 
-                    userRepository.getUserProfile(userId).collect { profile ->
-                        _uiState.update {
-                            it.copy(
-                                isOnWatchlist = profile?.watchlist?.contains(skillId) == true,
-                                userTier = profile?.tier ?: Constants.TIER_FREE,
-                                watchlistFull = profile?.tier == Constants.TIER_FREE &&
-                                        (profile.watchlist.size >= Constants.FREE_WATCHLIST_LIMIT)
-                            )
+                    userRepository.getUserProfile(userId)
+                        .catch { /* auth changed — no-op */ }
+                        .collect { profile ->
+                            _uiState.update {
+                                it.copy(
+                                    isOnWatchlist = profile?.watchlist?.contains(skillId) == true,
+                                    userTier = profile?.tier ?: Constants.TIER_FREE,
+                                    watchlistFull = profile?.tier == Constants.TIER_FREE &&
+                                            (profile.watchlist.size >= Constants.FREE_WATCHLIST_LIMIT)
+                                )
+                            }
                         }
-                    }
-                } catch (e: Exception) { /* auth failed, watchlist unavailable */ }
+                } catch (_: Exception) { }
             }
         }
     }
@@ -115,4 +118,3 @@ class SkillDetailViewModel(
         _uiState.update { it.copy(selectedTrend = type) }
     }
 }
-

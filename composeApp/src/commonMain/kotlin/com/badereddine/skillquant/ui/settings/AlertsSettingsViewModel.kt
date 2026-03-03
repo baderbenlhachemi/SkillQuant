@@ -11,8 +11,10 @@ import com.badereddine.skillquant.domain.repository.UserRepository
 import com.badereddine.skillquant.util.Constants
 import com.badereddine.skillquant.util.ThemeManager
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 
 data class SettingsUiState(
     val alerts: List<Alert> = emptyList(),
@@ -44,6 +46,10 @@ class AlertsSettingsViewModel(
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
+    // Use a supervisor scope so any child exception (e.g. PERMISSION_DENIED from a
+    // dying Firestore listener) never propagates up and kills the whole screen.
+    private val supervisedScope = screenModelScope + SupervisorJob()
+
     // Track listener jobs so we can cancel + restart them on auth change
     private var profileJob: Job? = null
     private var alertsJob: Job? = null
@@ -59,7 +65,7 @@ class AlertsSettingsViewModel(
     }
 
     private fun loadSettings() {
-        screenModelScope.launch {
+        supervisedScope.launch {
             try {
                 val userId = userRepository.getCurrentUserId()
                     ?: userRepository.signInAnonymously()
@@ -71,45 +77,53 @@ class AlertsSettingsViewModel(
         }
     }
 
-    /** Cancel existing Firestore listeners then re-subscribe for [userId]. */
+    /** Cancel old Firestore listeners then subscribe fresh for [userId]. */
     private fun startListeners(userId: String) {
         // Cancel stale listeners before creating new ones — prevents double-subscriptions
         // and the coroutine-scope crash that looks like an app close on Samsung devices.
         profileJob?.cancel()
         alertsJob?.cancel()
 
-        profileJob = screenModelScope.launch {
-            userRepository.getUserProfile(userId).collect { profile ->
-                _uiState.update {
-                    it.copy(
-                        userProfile = profile,
-                        isLoading = false,
-                        isAnonymous = userRepository.isAnonymous()
-                    )
-                }
-                // Resolve skill names for watchlist
-                profile?.watchlist?.forEach { skillId ->
-                    if (skillId !in _uiState.value.skillNames) {
-                        launch {
-                            val name = skillRepository.getSkillName(skillId)
-                            _uiState.update {
-                                it.copy(skillNames = it.skillNames + (skillId to name))
+        profileJob = supervisedScope.launch {
+            userRepository.getUserProfile(userId)
+                // Swallow PERMISSION_DENIED and any other Firestore errors inline —
+                // they fire when a listener is cancelled mid-flight after auth changes.
+                .catch { /* listener died — no-op, we'll start a fresh one */ }
+                .collect { profile ->
+                    _uiState.update {
+                        it.copy(
+                            userProfile = profile,
+                            isLoading = false,
+                            isAnonymous = userRepository.isAnonymous()
+                        )
+                    }
+                    // Resolve skill names for watchlist
+                    profile?.watchlist?.forEach { skillId ->
+                        if (skillId !in _uiState.value.skillNames) {
+                            supervisedScope.launch {
+                                runCatching {
+                                    val name = skillRepository.getSkillName(skillId)
+                                    _uiState.update {
+                                        it.copy(skillNames = it.skillNames + (skillId to name))
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
         }
 
-        alertsJob = screenModelScope.launch {
-            alertRepository.getAlerts(userId).collect { alerts ->
-                _uiState.update { it.copy(alerts = alerts) }
-            }
+        alertsJob = supervisedScope.launch {
+            alertRepository.getAlerts(userId)
+                .catch { /* listener died — no-op */ }
+                .collect { alerts ->
+                    _uiState.update { it.copy(alerts = alerts) }
+                }
         }
     }
 
     fun signInWithGoogle() {
-        screenModelScope.launch {
+        supervisedScope.launch {
             _uiState.update { it.copy(isSigningIn = true, authMessage = null) }
             try {
                 val idToken = googleAuthHelper.getGoogleIdToken()
@@ -149,7 +163,7 @@ class AlertsSettingsViewModel(
     }
 
     fun signOut() {
-        screenModelScope.launch {
+        supervisedScope.launch {
             try {
                 // signOut() internally signs in anonymously, so getCurrentUserId() is
                 // always non-null immediately after — no second signInAnonymously() needed.
@@ -181,7 +195,7 @@ class AlertsSettingsViewModel(
     }
 
     fun toggleNotifications() {
-        screenModelScope.launch {
+        supervisedScope.launch {
             try {
                 val userId = userRepository.getCurrentUserId() ?: return@launch
                 val current = _uiState.value.notificationsEnabled
@@ -193,7 +207,7 @@ class AlertsSettingsViewModel(
     }
 
     fun removeFromWatchlist(skillId: String) {
-        screenModelScope.launch {
+        supervisedScope.launch {
             try {
                 val userId = userRepository.getCurrentUserId() ?: return@launch
                 userRepository.removeFromWatchlist(userId, skillId)
@@ -204,7 +218,7 @@ class AlertsSettingsViewModel(
     }
 
     fun markAlertAsRead(alertId: String) {
-        screenModelScope.launch {
+        supervisedScope.launch {
             try {
                 alertRepository.markAsRead(alertId)
             } catch (e: Exception) {
@@ -214,7 +228,7 @@ class AlertsSettingsViewModel(
     }
 
     fun markAllAlertsAsRead() {
-        screenModelScope.launch {
+        supervisedScope.launch {
             try {
                 val userId = userRepository.getCurrentUserId() ?: return@launch
                 alertRepository.markAllAsRead(userId)
@@ -227,7 +241,7 @@ class AlertsSettingsViewModel(
     fun setTheme(mode: String) {
         themeManager.setThemeMode(mode)
         _uiState.update { it.copy(themeMode = mode) }
-        screenModelScope.launch {
+        supervisedScope.launch {
             try {
                 val userId = userRepository.getCurrentUserId() ?: return@launch
                 userRepository.updateThemePreference(userId, mode)
