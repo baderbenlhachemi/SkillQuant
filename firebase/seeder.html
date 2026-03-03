@@ -65,6 +65,9 @@
         <div id="status"></div>
     </div>
 
+    <!-- Environment variables (see env.js.example — never commit env.js) -->
+    <script src="env.js"></script>
+
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
@@ -73,7 +76,7 @@
 
         // Firebase configuration (from your google-services.json)
         const firebaseConfig = {
-            apiKey: "PLACEHOLDER_API_KEY",
+            apiKey: window.ENV?.FIREBASE_API_KEY || (() => { throw new Error("FIREBASE_API_KEY not set – copy env.js.example → env.js"); })(),
             authDomain: "skillquant-v1.firebaseapp.com",
             projectId: "skillquant-v1",
             storageBucket: "skillquant-v1.firebasestorage.app",
