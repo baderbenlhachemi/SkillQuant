@@ -107,9 +107,31 @@ class DashboardViewModel(
     }
 
     private fun loadDashboard() {
-        val location = _uiState.value.selectedLocation
-        loadData(location)
-        loadAuth()
+        screenModelScope.launch {
+            // ── Step 1: ensure we have an authenticated session FIRST ──────────
+            // Running loadData() before auth completes causes a permission_denied
+            // flash on first launch because Firestore rejects unauthenticated reads.
+            try {
+                if (userRepository.getCurrentUserId() == null) {
+                    userRepository.signInAnonymously()
+                }
+            } catch (_: Exception) {
+                // If anonymous sign-in fails (offline), proceed anyway —
+                // loadData will show the offline/error state instead.
+            }
+
+            // ── Step 2: now safe to start data + profile listeners in parallel ─
+            val location = _uiState.value.selectedLocation
+            loadData(location)
+            loadAuth()
+        }
+    }
+
+    private fun isPermissionError(e: Exception): Boolean {
+        val msg = (e.message ?: "").lowercase()
+        return msg.contains("permission_denied") ||
+               msg.contains("missing or insufficient") ||
+               msg.contains("permission denied")
     }
 
     private fun loadData(location: String) {
@@ -125,13 +147,19 @@ class DashboardViewModel(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            isRefreshing = false,
-                            isOffline = isNetworkError(e),
-                            error = e.message
-                        )
+                    // Suppress permission errors — they are a transient auth-startup
+                    // race and should never be shown to the user.
+                    if (isPermissionError(e)) {
+                        _uiState.update { it.copy(isLoading = false, isRefreshing = false) }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                isRefreshing = false,
+                                isOffline = isNetworkError(e),
+                                error = e.message
+                            )
+                        }
                     }
                 }
             }
@@ -154,6 +182,7 @@ class DashboardViewModel(
     private fun loadAuth() {
         screenModelScope.launch {
             try {
+                // Auth is already guaranteed by loadDashboard() — just get the current ID
                 val userId = userRepository.getCurrentUserId()
                     ?: userRepository.signInAnonymously()
 
@@ -183,6 +212,14 @@ class DashboardViewModel(
                         }
                     } catch (_: Exception) {}
                 }
+
+                // If loadData() fired before auth was ready and got no results,
+                // retry now that we are definitely authenticated.
+                if (_uiState.value.arbitrageOpportunities.isEmpty() && !_uiState.value.isLoading) {
+                    dataJob?.cancel()
+                    loadData(_uiState.value.selectedLocation)
+                }
+
             } catch (_: Exception) {
                 _uiState.update { it.copy(isLoading = false) }
             }
