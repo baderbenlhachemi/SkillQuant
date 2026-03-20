@@ -6,10 +6,13 @@ import com.badereddine.skillquant.domain.model.Skill
 import com.badereddine.skillquant.domain.model.SkillMetrics
 import com.badereddine.skillquant.domain.repository.SkillRepository
 import com.badereddine.skillquant.domain.repository.UserRepository
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class CalcUiState(
+data class EarningUpliftUiState(
     val allSkills: List<Skill> = emptyList(),
     val currentSkillIds: List<String> = emptyList(),
     val targetSkillId: String = "",
@@ -20,14 +23,14 @@ data class CalcUiState(
     val location: String = "Morocco"
 )
 
-class SalaryCalculatorViewModel(
+class EarningUpliftViewModel(
     private val skillRepository: SkillRepository,
     private val userRepository: UserRepository,
     location: String
 ) : ScreenModel {
 
-    private val _uiState = MutableStateFlow(CalcUiState(location = location))
-    val uiState: StateFlow<CalcUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(EarningUpliftUiState(location = location))
+    val uiState: StateFlow<EarningUpliftUiState> = _uiState.asStateFlow()
 
     init {
         screenModelScope.launch {

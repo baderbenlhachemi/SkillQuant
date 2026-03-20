@@ -32,7 +32,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import com.badereddine.skillquant.domain.model.Alert
 import com.badereddine.skillquant.domain.model.Skill
 import com.badereddine.skillquant.domain.model.TrendingSkill
-import com.badereddine.skillquant.ui.calculator.SalaryCalculatorScreen
+import com.badereddine.skillquant.ui.calculator.EarningUpliftScreen
 import com.badereddine.skillquant.ui.comparison.ComparisonScreen
 import com.badereddine.skillquant.ui.components.ArbitrageCard
 import com.badereddine.skillquant.ui.detail.SkillDetailScreen
@@ -198,7 +198,7 @@ class DashboardScreen : Screen {
                                     }
                                     item {
                                         QuickActionChip("💰 Earning Uplift") {
-                                            navigator.push(SalaryCalculatorScreen(state.selectedLocation))
+                                            navigator.push(EarningUpliftScreen(state.selectedLocation))
                                         }
                                     }
                                     item {

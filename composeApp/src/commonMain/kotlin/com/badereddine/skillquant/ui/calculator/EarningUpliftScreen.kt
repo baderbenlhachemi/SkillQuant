@@ -20,11 +20,11 @@ import com.badereddine.skillquant.util.toSalaryString
 import org.koin.core.parameter.parametersOf
 import kotlin.math.abs
 
-data class SalaryCalculatorScreen(val location: String = "Morocco") : Screen {
+data class EarningUpliftScreen(val location: String = "Morocco") : Screen {
     @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
     @Composable
     override fun Content() {
-        val viewModel = koinScreenModel<SalaryCalculatorViewModel> { parametersOf(location) }
+        val viewModel = koinScreenModel<EarningUpliftViewModel> { parametersOf(location) }
         val state by viewModel.uiState.collectAsState()
         val navigator = LocalNavigator.currentOrThrow
 
@@ -193,4 +193,5 @@ data class SalaryCalculatorScreen(val location: String = "Morocco") : Screen {
         }
     }
 }
+
 

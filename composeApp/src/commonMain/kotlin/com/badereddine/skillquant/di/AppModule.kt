@@ -7,7 +7,7 @@ import com.badereddine.skillquant.data.repository.FirestoreUserRepository
 import com.badereddine.skillquant.domain.repository.AlertRepository
 import com.badereddine.skillquant.domain.repository.SkillRepository
 import com.badereddine.skillquant.domain.repository.UserRepository
-import com.badereddine.skillquant.ui.calculator.SalaryCalculatorViewModel
+import com.badereddine.skillquant.ui.calculator.EarningUpliftViewModel
 import com.badereddine.skillquant.ui.comparison.ComparisonViewModel
 import com.badereddine.skillquant.ui.dashboard.DashboardViewModel
 import com.badereddine.skillquant.ui.detail.SkillDetailViewModel
@@ -43,7 +43,7 @@ val appModule = module {
     factory { (skillId: String, location: String) -> SkillDetailViewModel(skillId, location, get(), get()) }
     factoryOf(::AlertsSettingsViewModel)
     factory { (location: String) -> ComparisonViewModel(get(), location) }
-    factory { (location: String) -> SalaryCalculatorViewModel(get(), get(), location) }
+    factory { (location: String) -> EarningUpliftViewModel(get(), get(), location) }
     factory { (location: String) -> LearningPathViewModel(get(), get(), location) }
     factory { (location: String) -> RadarViewModel(get(), get(), location) }
     factoryOf(::NewsViewModel)
@@ -56,4 +56,3 @@ val appModule = module {
  * JVM/Desktop: provides a stub.
  */
 expect val platformModule: org.koin.core.module.Module
-
