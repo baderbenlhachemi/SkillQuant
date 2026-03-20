@@ -123,8 +123,11 @@ private fun LearningPathCard(
                 Text("📚 Top Resources", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(4.dp))
                 metrics.learningResources.take(2).forEach { res ->
+                    val resUrl = res.url.ifBlank {
+                        "https://www.google.com/search?q=${res.title.replace(" ", "%20")}"
+                    }
                     TextButton(
-                        onClick = { if (res.url.isNotBlank()) runCatching { uriHandler.openUri(res.url) } },
+                        onClick = { runCatching { uriHandler.openUri(resUrl) } },
                         contentPadding = PaddingValues(0.dp)
                     ) {
                         Text(

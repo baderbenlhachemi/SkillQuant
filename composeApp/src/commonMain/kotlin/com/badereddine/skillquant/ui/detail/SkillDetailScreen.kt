@@ -388,13 +388,19 @@ data class SkillDetailScreen(val skillId: String, val location: String = "Morocc
                             )
                         }
                         items(metrics.jobListings) { job ->
+                            val jobUrl = job.url.ifBlank {
+                                val q = job.title.replace(" ", "%20")
+                                val l = job.location.replace(" ", "%20").replace(",", "%2C")
+                                if (job.source.contains("Indeed", ignoreCase = true))
+                                    "https://www.indeed.com/jobs?q=$q&l=$l"
+                                else
+                                    "https://www.linkedin.com/jobs/search/?keywords=$q&location=$l"
+                            }
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        if (job.url.isNotBlank()) {
-                                            runCatching { uriHandler.openUri(job.url) }
-                                        }
+                                        runCatching { uriHandler.openUri(jobUrl) }
                                     },
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(

@@ -29,11 +29,65 @@ private fun DocumentSnapshot.getStringList(field: String): List<String> =
 private fun DocumentSnapshot.getTrendPoints(field: String): List<TrendPoint> =
     runCatching { get<List<TrendPoint>>(field) }.getOrNull() ?: emptyList()
 
-private fun DocumentSnapshot.getLearningResources(): List<LearningResource> =
-    runCatching { get<List<LearningResource>>("learningResources") }.getOrNull() ?: emptyList()
+@Suppress("UNCHECKED_CAST")
+private fun DocumentSnapshot.getLearningResources(): List<LearningResource> {
+    // Try direct deserialization first (works on some platforms)
+    runCatching { get<List<LearningResource>>("learningResources") }.getOrNull()
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { return it }
+    // Fallback: manually map List<Map<String, Any>> (Firestore native representation)
+    return runCatching {
+        val raw = safeGet<List<Map<String, Any>>>("learningResources") ?: return emptyList()
+        raw.map { m ->
+            LearningResource(
+                title    = (m["title"]    as? String) ?: "",
+                url      = (m["url"]      as? String) ?: "",
+                type     = (m["type"]     as? String) ?: "",
+                platform = (m["platform"] as? String) ?: ""
+            )
+        }
+    }.getOrElse { emptyList() }
+}
 
-private fun DocumentSnapshot.getJobListings(): List<JobListing> =
-    runCatching { get<List<JobListing>>("jobListings") }.getOrNull() ?: emptyList()
+@Suppress("UNCHECKED_CAST")
+private fun DocumentSnapshot.getJobListings(): List<JobListing> {
+    // Try direct deserialization first
+    runCatching { get<List<JobListing>>("jobListings") }.getOrNull()
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { return it }
+    // Fallback: manually map List<Map<String, Any>>
+    return runCatching {
+        val raw = safeGet<List<Map<String, Any>>>("jobListings") ?: return emptyList()
+        raw.map { m ->
+            val storedUrl = (m["url"] as? String) ?: ""
+            val title     = (m["title"]    as? String) ?: ""
+            val company   = (m["company"]  as? String) ?: ""
+            val location  = (m["location"] as? String) ?: ""
+            val source    = (m["source"]   as? String) ?: ""
+            // If the stored URL is blank, generate a live LinkedIn/Indeed search URL
+            val resolvedUrl = when {
+                storedUrl.isNotBlank() -> storedUrl
+                source.contains("Indeed", ignoreCase = true) ->
+                    "https://www.indeed.com/jobs?q=${title.encodeUrl()}&l=${location.encodeUrl()}"
+                else ->
+                    "https://www.linkedin.com/jobs/search/?keywords=${title.encodeUrl()}&location=${location.encodeUrl()}"
+            }
+            JobListing(
+                title         = title,
+                company       = company,
+                location      = location,
+                salaryRange   = (m["salaryRange"]   as? String) ?: "",
+                type          = (m["type"]          as? String) ?: "Full-time",
+                url           = resolvedUrl,
+                source        = source,
+                postedDaysAgo = (m["postedDaysAgo"] as? Number)?.toInt() ?: 0
+            )
+        }
+    }.getOrElse { emptyList() }
+}
+
+private fun String.encodeUrl(): String =
+    this.replace(" ", "%20").replace(",", "%2C")
 
 class FirestoreSkillRepository(
     private val firestore: FirebaseFirestore
