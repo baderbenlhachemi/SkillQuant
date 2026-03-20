@@ -43,7 +43,6 @@ import com.badereddine.skillquant.ui.radar.RadarScreen
 import com.badereddine.skillquant.ui.settings.AlertsSettingsScreen
 import com.badereddine.skillquant.ui.theme.NegativeRed
 import com.badereddine.skillquant.ui.theme.PositiveGreen
-import com.badereddine.skillquant.ui.theme.TealPrimary
 import com.badereddine.skillquant.util.Constants
 import com.badereddine.skillquant.util.toPercentString
 import com.badereddine.skillquant.util.toRelativeTimeString
@@ -198,7 +197,7 @@ class DashboardScreen : Screen {
                                         }
                                     }
                                     item {
-                                        QuickActionChip("💰 Salary Calc") {
+                                        QuickActionChip("💰 Earning Uplift") {
                                             navigator.push(SalaryCalculatorScreen(state.selectedLocation))
                                         }
                                     }

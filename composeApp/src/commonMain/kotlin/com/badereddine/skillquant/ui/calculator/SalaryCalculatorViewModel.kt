@@ -66,7 +66,10 @@ class SalaryCalculatorViewModel(
     }
 
     private fun loadCurrentMetrics(ids: List<String>) {
-        if (ids.isEmpty()) return
+        if (ids.isEmpty()) {
+            _uiState.update { it.copy(currentMetrics = emptyList(), salaryIncrease = null) }
+            return
+        }
         screenModelScope.launch {
             skillRepository.getSkillMetricsList(ids, _uiState.value.location).collect { metrics ->
                 _uiState.update { it.copy(currentMetrics = metrics) }
@@ -77,9 +80,12 @@ class SalaryCalculatorViewModel(
 
     private fun recalculate() {
         val state = _uiState.value
-        val currentAvg = state.currentMetrics.map { it.avgSalary }.average().takeIf { !it.isNaN() } ?: return
-        val target = state.targetMetrics ?: return
-        if (currentAvg <= 0) return
+        val currentAvg = state.currentMetrics.map { it.avgSalary }.average().takeIf { !it.isNaN() }
+        val target = state.targetMetrics
+        if (currentAvg == null || target == null || currentAvg <= 0) {
+            _uiState.update { it.copy(salaryIncrease = null) }
+            return
+        }
         val increase = ((target.avgSalary - currentAvg) / currentAvg) * 100
         _uiState.update { it.copy(salaryIncrease = increase) }
     }

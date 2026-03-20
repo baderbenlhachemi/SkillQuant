@@ -18,6 +18,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import com.badereddine.skillquant.ui.theme.*
 import com.badereddine.skillquant.util.toSalaryString
 import org.koin.core.parameter.parametersOf
+import kotlin.math.abs
 
 data class SalaryCalculatorScreen(val location: String = "Morocco") : Screen {
     @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -30,7 +31,7 @@ data class SalaryCalculatorScreen(val location: String = "Morocco") : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("💰 Salary Calculator", fontWeight = FontWeight.Bold) },
+                    title = { Text("💰 Earning Uplift", fontWeight = FontWeight.Bold) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) { Text("←", style = MaterialTheme.typography.titleLarge) }
                     },
@@ -46,6 +47,12 @@ data class SalaryCalculatorScreen(val location: String = "Morocco") : Screen {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                Text(
+                    "Estimate how one new skill could change your average salary in $location.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 // Current skills
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -90,16 +97,28 @@ data class SalaryCalculatorScreen(val location: String = "Morocco") : Screen {
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Text("Target Skill to Learn", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Pick one skill not in your current set.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Spacer(Modifier.height(8.dp))
                         var expanded by remember { mutableStateOf(false) }
+                        val canPickTarget = state.currentSkillIds.isNotEmpty()
                         val targetName = state.allSkills.find { it.id == state.targetSkillId }?.name ?: "Pick a skill…"
-                        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it && canPickTarget }) {
                             OutlinedTextField(
                                 value = targetName,
                                 onValueChange = {},
                                 readOnly = true,
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
                                 modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                                enabled = canPickTarget,
+                                supportingText = {
+                                    if (!canPickTarget) {
+                                        Text("Select current skills first")
+                                    }
+                                },
                                 shape = RoundedCornerShape(12.dp)
                             )
                             ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -118,7 +137,13 @@ data class SalaryCalculatorScreen(val location: String = "Morocco") : Screen {
 
                 // Result
                 val increase = state.salaryIncrease
+                if (state.isLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
                 if (increase != null && state.targetMetrics != null) {
+                    val currentAvg = state.currentMetrics.map { it.avgSalary }.average().toLong()
+                    val absPercent = ((abs(increase) * 10).toInt() / 10.0)
+                    val percentPrefix = if (increase >= 0) "+" else "-"
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
@@ -130,7 +155,7 @@ data class SalaryCalculatorScreen(val location: String = "Morocco") : Screen {
                             Text("📊 Projected Impact", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                text = if (increase >= 0) "↑ +${((increase * 10).toInt() / 10.0)}%" else "↓ ${((increase * 10).toInt() / 10.0)}%",
+                                text = if (increase >= 0) "↑ $percentPrefix$absPercent%" else "↓ $percentPrefix$absPercent%",
                                 style = MaterialTheme.typography.displaySmall,
                                 fontWeight = FontWeight.Bold,
                                 color = if (increase >= 0) PositiveGreen else NegativeRed
@@ -144,6 +169,11 @@ data class SalaryCalculatorScreen(val location: String = "Morocco") : Screen {
                             )
                             Spacer(Modifier.height(12.dp))
                             Text(
+                                "Current avg: ${currentAvg.toSalaryString(location)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
                                 "Target salary: ${state.targetMetrics!!.avgSalary.toSalaryString(location)}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium
@@ -153,6 +183,10 @@ data class SalaryCalculatorScreen(val location: String = "Morocco") : Screen {
                 } else if (state.currentSkillIds.isEmpty()) {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                         Text("Select your current skills to get started", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else if (state.targetSkillId.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text("Now pick a target skill to see projected salary impact", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
