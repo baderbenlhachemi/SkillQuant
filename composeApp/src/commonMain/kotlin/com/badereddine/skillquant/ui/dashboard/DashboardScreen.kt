@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -46,6 +47,7 @@ import com.badereddine.skillquant.ui.theme.TealPrimary
 import com.badereddine.skillquant.util.Constants
 import com.badereddine.skillquant.util.toPercentString
 import com.badereddine.skillquant.util.toRelativeTimeString
+import kotlin.math.abs
 
 class DashboardScreen : Screen {
 
@@ -249,7 +251,18 @@ class DashboardScreen : Screen {
 
                         // Trending Skills
                         item {
-                            SectionHeader(title = "📈 Trending Skills")
+                            SectionHeader(
+                                title = "📈 Trending Skills",
+                                infoText = """
+                                    How this works:
+                                    - We compare today's demand score with the score from 7 days ago.
+                                    - If the score goes up, trend is positive. If it goes down, trend is negative.
+                                    - We only show skills where the weekly change is bigger than 3%.
+
+                                    Example:
+                                    60 now vs 50 last week = +20% (trending up)
+                                """.trimIndent()
+                            )
                         }
                         items(state.trendingSkills) { skill ->
                             TrendingSkillRow(
@@ -403,9 +416,12 @@ private fun locationFlag(location: String): String = when (location) {
 private fun SectionHeader(
     title: String,
     subtitle: String? = null,
+    infoText: String? = null,
     action: String? = null,
     onAction: (() -> Unit)? = null
 ) {
+    var showInfoDialog by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -414,12 +430,27 @@ private fun SectionHeader(
         verticalAlignment = Alignment.Bottom
     ) {
         Column {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                if (infoText != null) {
+                    IconButton(
+                        onClick = { showInfoDialog = true },
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Trending skills info",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
             if (subtitle != null) {
                 Text(
                     text = subtitle,
@@ -433,6 +464,19 @@ private fun SectionHeader(
                 Text(action)
             }
         }
+    }
+
+    if (showInfoDialog && infoText != null) {
+        AlertDialog(
+            onDismissRequest = { showInfoDialog = false },
+            title = { Text("How trending is calculated") },
+            text = { Text(infoText) },
+            confirmButton = {
+                TextButton(onClick = { showInfoDialog = false }) {
+                    Text("Got it")
+                }
+            }
+        )
     }
 }
 
@@ -473,8 +517,13 @@ private fun TrendingSkillRow(
             }
             val trendColor = if (skill.trendDirection == "up") PositiveGreen else NegativeRed
             val arrow = if (skill.trendDirection == "up") "↑" else "↓"
+            val signedChangePercent = if (skill.trendDirection == "down") {
+                -abs(skill.changePercent)
+            } else {
+                abs(skill.changePercent)
+            }
             Text(
-                text = "$arrow ${skill.changePercent.toPercentString()}",
+                text = "$arrow ${signedChangePercent.toPercentString()}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = trendColor
