@@ -65,19 +65,23 @@ data class RadarScreen(val location: String = "Morocco") : Screen {
                         Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        val axisLabels = listOf("Demand", "Supply", "Salary", "Arbitrage", "Jobs")
+                        val axisLabels = listOf("Demand", "Supply Gap", "Salary", "Arbitrage", "Jobs")
 
                         // Compute max values for relative normalization
                         val maxSalary = state.metrics.maxOfOrNull { it.avgSalary }?.coerceAtLeast(1L) ?: 1L
                         val maxJobs = state.metrics.maxOfOrNull { it.jobPostCount }?.coerceAtLeast(1) ?: 1
 
                         val entries = state.metrics.mapIndexed { i, m ->
-                            // Salary & Jobs normalized relative to max in the watchlist (0-100)
-                            val salaryNorm = (m.avgSalary.toDouble() / maxSalary.toDouble() * 100.0).coerceIn(0.0, 100.0)
-                            val jobsNorm = (m.jobPostCount.toDouble() / maxJobs.toDouble() * 100.0).coerceIn(0.0, 100.0)
+                            val normalized = m.toRadarNormalizedMetrics(maxSalary = maxSalary, maxJobs = maxJobs)
                             RadarEntry(
                                 skillName = m.skillName,
-                                values = listOf(m.demandScore, m.supplyScore, salaryNorm, m.arbitrageScore, jobsNorm),
+                                values = listOf(
+                                    normalized.demand,
+                                    normalized.supplyGap,
+                                    normalized.salary,
+                                    normalized.arbitrage,
+                                    normalized.jobs
+                                ),
                                 color = CHART_COLORS[i % CHART_COLORS.size]
                             )
                         }
@@ -90,7 +94,7 @@ data class RadarScreen(val location: String = "Morocco") : Screen {
                                 Text("Watchlist Radar", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    "All axes 0–100. Demand/Supply/Arbitrage are scores. Salary & Jobs are relative to the highest in your watchlist.",
+                                    "All axes 0-100. Supply Gap is inverted (100 - Supply), so lower talent supply plots farther out. Salary & Jobs are relative to the highest in your watchlist.",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -117,7 +121,7 @@ data class RadarScreen(val location: String = "Morocco") : Screen {
                                             horizontalArrangement = Arrangement.SpaceEvenly
                                         ) {
                                             ValueChip("Demand", "${m.demandScore.toInt()}")
-                                            ValueChip("Supply", "${m.supplyScore.toInt()}")
+                                            ValueChip("Supply Gap", "${toSupplyGapScore(m.supplyScore).toInt()}")
                                             val salaryStr = m.avgSalary.toSalaryString(location)
                                             ValueChip("Salary", salaryStr)
                                             ValueChip("Arb.", "${m.arbitrageScore.toInt()}")
