@@ -11,9 +11,17 @@
 
 ## Screenshots
 
-| Dashboard | Skill Detail | Radar Chart | Settings |
-|:---------:|:------------:|:-----------:|:--------:|
-| Arbitrage opportunities, trending skills, search & country filter | Demand/Supply gauge, salary, employers, jobs, learning resources | Spider chart comparing watchlisted skills | Google account, theme, watchlist, alerts |
+| Screen | Capture |
+|---|---|
+| Dashboard | ![Dashboard](docs/screenshots/dashboard.png) |
+| Skill Detail | ![Skill Detail](docs/screenshots/skill-detail.png) |
+| Alerts & Settings | ![Alerts & Settings](docs/screenshots/alerts-settings.png) |
+| Skill Comparison | ![Skill Comparison](docs/screenshots/skill-comparison.png) |
+| Earning Uplift | ![Earning Uplift](docs/screenshots/earning-uplift.png) |
+| Learning Path | ![Learning Path](docs/screenshots/learning-path.png) |
+| Skill Radar | ![Skill Radar](docs/screenshots/skill-radar.png) |
+| Market News | ![Market News](docs/screenshots/market-news.png) |
+| Onboarding | ![Onboarding](docs/screenshots/onboarding.png) |
 
 ---
 
@@ -55,12 +63,12 @@ The backend is fully serverless on Firebase. Data flows:
 |--------|-------------|
 | **Dashboard** | Top 15 arbitrage opportunities, trending skills, search bar + country dropdown |
 | **Skill Detail** | Score gauge, demand/supply bars, salary card, employers, job listings, learning resources |
-| **Alerts and Settings** | Google account, push notifications, theme toggle, watchlist management |
+| **Alerts & Settings** | Google account, push notifications, theme toggle, watchlist management |
 | **Skill Comparison** | Side-by-side compare 2 skills (demand, salary, supply) |
-| **Salary Calculator** | Personalized ROI estimator: "If I learn X, my salary increases by Y%" |
-| **Learning Path Builder** | Prioritized study plan based on watchlist, ranked by ROI |
-| **Skill Radar Chart** | Spider/radar chart across demand/salary/supply/growth axes |
-| **Market News Feed** | Curated tech news from Hacker News + Dev.to, filtered by watchlisted skills |
+| **Earning Uplift** | Personalized estimator: "If I learn X, my salary changes by Y%" |
+| **Learning Path** | Prioritized study plan based on watchlist, ranked by ROI |
+| **Skill Radar** | Spider/radar chart across demand/salary/supply/growth/jobs axes |
+| **Market News** | Curated tech news from Hacker News, Dev.to, Reddit, Lobsters, and GitHub, filtered by watchlisted skills |
 | **Onboarding** | First-launch wizard: pick your current skills and get personalized recommendations |
 | **No Internet** | Graceful offline screen with retry button |
 
@@ -275,7 +283,7 @@ Or press the Run button in Android Studio on the androidApp run configuration.
 | Backend | Firebase Cloud Functions v2 (TypeScript) |
 | Database | Cloud Firestore (real-time snapshots) |
 | Push | Firebase Cloud Messaging |
-| News | Hacker News Algolia API + Dev.to API |
+| News | Hacker News Algolia API + Dev.to API + Reddit API + Lobsters API + GitHub trending feed |
 | Jobs | Remotive API + LinkedIn/Indeed search URLs |
 
 ---
@@ -285,7 +293,7 @@ Or press the Run button in Android Studio on the androidApp run configuration.
 ### Completed
 
 - [x] KMP project structure with Compose Multiplatform
-- [x] 10+ screens: Dashboard, Detail, Comparison, Calculator, Radar, News, Learning Path, Onboarding, Settings, Offline
+- [x] 10+ screens: Dashboard, Detail, Comparison, Earning Uplift, Skill Radar, Market News, Learning Path, Onboarding, Alerts & Settings, Offline
 - [x] Firebase backend: 5 scheduled Cloud Functions
 - [x] 210 skills across 7 categories, 3 countries (Morocco, France, USA)
 - [x] Real job listings (Remotive + LinkedIn/Indeed search links)
