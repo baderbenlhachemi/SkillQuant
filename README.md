@@ -13,15 +13,15 @@
 
 | Screen | Capture |
 |---|---|
-| Dashboard | ![Dashboard](docs/screenshots/dashboard.png) |
-| Skill Detail | ![Skill Detail](docs/screenshots/skill-detail.png) |
-| Alerts & Settings | ![Alerts & Settings](docs/screenshots/alerts-settings.png) |
-| Skill Comparison | ![Skill Comparison](docs/screenshots/skill-comparison.png) |
-| Earning Uplift | ![Earning Uplift](docs/screenshots/earning-uplift.png) |
-| Learning Path | ![Learning Path](docs/screenshots/learning-path.png) |
-| Skill Radar | ![Skill Radar](docs/screenshots/skill-radar.png) |
-| Market News | ![Market News](docs/screenshots/market-news.png) |
-| Onboarding | ![Onboarding](docs/screenshots/onboarding.png) |
+| Dashboard | <img src="docs/screenshots/dashboard.png" alt="Dashboard" width="280" /> |
+| Skill Detail | <img src="docs/screenshots/skill-detail.png" alt="Skill Detail" width="280" /> |
+| Alerts & Settings | <img src="docs/screenshots/alerts-settings.png" alt="Alerts and Settings" width="280" /> |
+| Skill Comparison | <img src="docs/screenshots/skill-comparison.png" alt="Skill Comparison" width="280" /> |
+| Earning Uplift | <img src="docs/screenshots/earning-uplift.png" alt="Earning Uplift" width="280" /> |
+| Learning Path | <img src="docs/screenshots/learning-path.png" alt="Learning Path" width="280" /> |
+| Skill Radar | <img src="docs/screenshots/skill-radar.png" alt="Skill Radar" width="280" /> |
+| Market News | <img src="docs/screenshots/market-news.png" alt="Market News" width="280" /> |
+| Onboarding | <img src="docs/screenshots/onboarding.png" alt="Onboarding" width="280" /> |
 
 ---
 
